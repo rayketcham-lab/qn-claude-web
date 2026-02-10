@@ -1,0 +1,4 @@
+# Only needed if NOT using vendored dependencies (vendor/ directory)
+# The installer ships with all deps pre-vendored - no pip required.
+flask>=2.3.0
+flask-socketio>=5.3.0

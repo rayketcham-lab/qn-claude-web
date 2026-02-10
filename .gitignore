@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+*.pyc
+sessions/
+backups/
+certs/
+usage.json
+config.json
+*.log
+qn-code-assistant-v*.sh

@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QN Code Assistant</title>
+
+    <!-- xterm.js for terminal emulation -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.min.js"></script>
+
+    <!-- Socket.IO -->
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+
+    <!-- Marked for markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <!-- Highlight.js for code syntax -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github-dark.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/core.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/javascript.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/python.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/bash.min.js"></script>
+
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="icon" type="image/svg+xml" href="/static/icon.svg">
+    <meta name="theme-color" content="#da7756">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+</head>
+<body>
+    <!-- Toast Notifications -->
+    <div id="toast-container"></div>
+
+    <!-- Connection Banner -->
+    <div id="connection-banner">
+        <span class="loading"></span>
+        <span>Connection lost. Reconnecting...</span>
+    </div>
+
+    <div id="app">
+        <!-- Sidebar -->
+        <aside id="sidebar">
+            <div class="sidebar-header">
+                <h1>Claude Code</h1>
+                <div class="sidebar-header-actions">
+                    <button id="btn-logout" class="btn-icon" title="Logout" style="display:none; font-size:0.7rem;">&#x23FB;</button>
+                    <button id="btn-settings" class="btn-icon" title="Settings">&#9881;</button>
+                    <span class="status-indicator" id="connection-status"></span>
+                </div>
+            </div>
+
+            <!-- Usage Display -->
+            <div id="usage-display" class="usage-bar" style="display:none">
+                <span id="usage-text">Loading usage...</span>
+                <span id="usage-reset" class="usage-reset"></span>
+            </div>
+
+            <!-- Mode Tab (Projects only now) -->
+            <div class="mode-tabs">
+                <button class="mode-tab active" data-mode="projects">Projects</button>
+            </div>
+
+            <!-- Projects Panel -->
+            <div id="projects-panel" class="sidebar-panel active">
+                <div class="path-nav">
+                    <button id="nav-up" title="Go up">&uarr;</button>
+                    <input type="text" id="current-path" placeholder="Path...">
+                    <button id="nav-go" title="Navigate">&rarr;</button>
+                </div>
+                <div class="sidebar-sections scrollable">
+                    <div id="favorites-section" class="sidebar-section" style="display:none">
+                        <div class="section-label">Favorites</div>
+                        <div id="favorites-list"></div>
+                    </div>
+                    <div id="remote-hosts-section" class="sidebar-section" style="display:none">
+                        <div class="section-label">Remote Hosts</div>
+                        <div id="remote-hosts-list"></div>
+                    </div>
+                    <div class="section-label" id="projects-section-label">Local Projects <button id="btn-refresh-projects" title="Refresh projects" style="background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:0.85rem;padding:0 4px;vertical-align:middle;">&#8635;</button></div>
+                    <div id="projects-list"></div>
+                </div>
+            </div>
+
+            <!-- Launch Options -->
+            <div id="launch-options">
+                <h3>Launch Options</h3>
+                <label class="flag-option">
+                    <input type="checkbox" id="flag-resume">
+                    <span>-r</span> Resume last conversation
+                </label>
+                <label class="flag-option">
+                    <input type="checkbox" id="flag-continue">
+                    <span>-c</span> Continue conversation
+                </label>
+                <label class="flag-option">
+                    <input type="checkbox" id="flag-skip-perms">
+                    <span>--dangerously-skip-permissions</span>
+                </label>
+                <label class="flag-option">
+                    <input type="checkbox" id="flag-verbose">
+                    <span>--verbose</span> Verbose output
+                </label>
+                <div class="model-select">
+                    <label>Model:</label>
+                    <select id="model-select">
+                        <option value="">Default</option>
+                        <option value="sonnet">Sonnet</option>
+                        <option value="opus">Opus</option>
+                        <option value="haiku">Haiku</option>
+                    </select>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main id="main-content">
+            <!-- View Tabs -->
+            <div class="view-tabs">
+                <button class="view-tab active" data-view="terminal">Terminal</button>
+                <button class="view-tab" data-view="chat">Chat</button>
+                <button class="view-tab" data-view="files">Files</button>
+            </div>
+
+            <!-- Terminal View -->
+            <div id="terminal-view" class="view-content active">
+                <div class="terminal-toolbar">
+                    <div class="terminal-toolbar-left">
+                        <span id="terminal-project">No project selected</span>
+                        <span id="git-status-badge" class="hidden"></span>
+                    </div>
+                    <div class="terminal-actions">
+                        <button id="btn-init-wizard" class="btn-icon" title="Create CLAUDE.md" style="display:none">&#9998;</button>
+                        <button id="btn-kill-terminal" class="btn-icon" title="Kill Terminal">&times;</button>
+                    </div>
+                </div>
+                <!-- Terminal Tab Bar -->
+                <div id="terminal-tabs">
+                    <div id="terminal-tabs-list"></div>
+                    <button id="btn-new-terminal" class="btn-icon" title="New Terminal">+</button>
+                </div>
+                <div id="terminal-container"></div>
+            </div>
+
+            <!-- Chat View -->
+            <div id="chat-view" class="view-content">
+                <!-- Chat Header (single persistent session) -->
+                <div id="chat-header">
+                    <span id="chat-session-label">Chat - Claude</span>
+                    <div id="chat-header-actions">
+                        <div id="chat-search-wrap">
+                            <input type="text" id="chat-search-input" placeholder="Search sessions..." autocomplete="off">
+                            <div id="chat-search-results" class="hidden"></div>
+                        </div>
+                        <button id="btn-export-chat" class="btn-icon" title="Export to Markdown">&#8681;</button>
+                    </div>
+                </div>
+                <div id="chat-messages" class="scrollable"></div>
+                <div id="chat-input-area">
+                    <div id="chat-input-controls">
+                        <div id="chat-status"></div>
+                        <label id="sound-toggle-label" title="Play notification sounds">
+                            <input type="checkbox" id="sound-toggle">
+                            &#128264;
+                        </label>
+                        <label id="auto-follow-label" title="Auto-scroll to latest output">
+                            <input type="checkbox" id="auto-follow" checked>
+                            Auto-follow
+                        </label>
+                    </div>
+                    <textarea id="chat-input" placeholder="Type your message... (Enter to send, Alt+Enter for newline)"></textarea>
+                    <button id="btn-send-chat">Send</button>
+                </div>
+            </div>
+            <!-- Files View -->
+            <div id="files-view" class="view-content">
+                <div class="files-toolbar">
+                    <div class="files-breadcrumb" id="files-breadcrumb"></div>
+                </div>
+                <div class="files-split">
+                    <div class="files-tree" id="files-tree">
+                        <div class="empty-state">
+                            <p>Select a project to browse files</p>
+                        </div>
+                    </div>
+                    <div class="files-viewer" id="files-viewer">
+                        <div class="empty-state">
+                            <p>Select a file to view</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-overlay" class="settings-overlay hidden">
+        <div class="settings-modal">
+            <div class="settings-header">
+                <h2>Settings</h2>
+                <button class="settings-close" id="settings-close">&times;</button>
+            </div>
+            <div class="settings-tabs">
+                <button class="settings-tab active" data-settings-tab="general">General</button>
+                <button class="settings-tab" data-settings-tab="auth">Auth &amp; SSL</button>
+                <button class="settings-tab" data-settings-tab="favorites">Favorites</button>
+                <button class="settings-tab" data-settings-tab="remotes">Remote Hosts</button>
+                <button class="settings-tab" data-settings-tab="users">Users</button>
+            </div>
+            <div class="settings-body">
+                <!-- General -->
+                <div id="settings-general" class="settings-panel active">
+                    <div class="settings-field">
+                        <label>Default Projects Root</label>
+                        <input type="text" id="setting-projects-root" placeholder="/home/user/projects">
+                    </div>
+                    <div class="settings-field">
+                        <label>Process Timeout (minutes)</label>
+                        <input type="number" id="setting-timeout" min="1" max="1440" value="60">
+                    </div>
+                    <div class="settings-field">
+                        <label>Max Concurrent Terminals</label>
+                        <input type="number" id="setting-max-terminals" min="1" max="20" value="5">
+                    </div>
+                    <div class="settings-field">
+                        <label>Max Concurrent Chats</label>
+                        <input type="number" id="setting-max-chats" min="1" max="20" value="10">
+                    </div>
+                    <div class="settings-field">
+                        <label>Chat Working Directory</label>
+                        <input type="text" id="setting-chat-cwd" placeholder="/opt/claude" value="/opt/claude">
+                    </div>
+                    <div class="settings-field">
+                        <label>Theme</label>
+                        <select id="setting-theme">
+                            <option value="dark">Dark (Default)</option>
+                            <option value="midnight">Midnight Blue</option>
+                            <option value="solarized">Solarized Dark</option>
+                            <option value="light">Light</option>
+                        </select>
+                    </div>
+                    <h3 style="margin: 16px 0 8px; font-size: 0.9rem;">Directory Browsing</h3>
+                    <div class="settings-field">
+                        <label>Allowed Paths (comma-separated)</label>
+                        <input type="text" id="setting-allowed-paths" placeholder="/opt" value="/opt">
+                        <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:2px;">Restrict project browsing to these root paths</div>
+                    </div>
+                    <div class="settings-field">
+                        <label><input type="checkbox" id="setting-allow-full-browsing" style="width:auto; margin-right:6px;">Allow full filesystem browsing (unrestricted)</label>
+                    </div>
+                    <button class="btn-save" id="btn-save-general">Save</button>
+                </div>
+                <!-- Auth & SSL -->
+                <div id="settings-auth" class="settings-panel">
+                    <h3 style="margin-bottom:12px; font-size:0.9rem;">Authentication</h3>
+                    <div id="auth-status-display" style="margin-bottom:12px; font-size:0.8rem; color:var(--text-secondary);"></div>
+                    <div class="settings-field">
+                        <label>Username</label>
+                        <input type="text" id="setting-auth-username" placeholder="admin">
+                    </div>
+                    <div class="settings-field">
+                        <label>New Password</label>
+                        <input type="password" id="setting-auth-password" placeholder="Leave blank to keep current">
+                    </div>
+                    <button class="btn-save" id="btn-save-auth" style="margin-bottom:24px;">Save Auth</button>
+
+                    <h3 style="margin-bottom:12px; font-size:0.9rem;">HTTPS / SSL</h3>
+                    <div class="settings-field">
+                        <label><input type="checkbox" id="setting-ssl-enabled" style="width:auto; margin-right:6px;">Enable HTTPS</label>
+                    </div>
+                    <div class="settings-field">
+                        <label>SSL Certificate Path (blank = auto-generate self-signed)</label>
+                        <input type="text" id="setting-ssl-cert" placeholder="/path/to/cert.pem">
+                    </div>
+                    <div class="settings-field">
+                        <label>SSL Key Path</label>
+                        <input type="text" id="setting-ssl-key" placeholder="/path/to/key.pem">
+                    </div>
+                    <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:12px;">Server restart required after changing SSL settings.</div>
+                    <button class="btn-save" id="btn-save-ssl">Save SSL</button>
+                </div>
+                <!-- Favorites -->
+                <div id="settings-favorites" class="settings-panel">
+                    <div id="favorites-settings-list"></div>
+                    <div class="settings-add-form" id="add-favorite-form" style="display:none">
+                        <div class="settings-field">
+                            <label>Name</label>
+                            <input type="text" id="fav-name" placeholder="My Project">
+                        </div>
+                        <div class="settings-field">
+                            <label>Path</label>
+                            <input type="text" id="fav-path" placeholder="/home/user/project">
+                        </div>
+                        <div class="settings-field">
+                            <label>Remote Host (optional)</label>
+                            <select id="fav-remote-host">
+                                <option value="">Local</option>
+                            </select>
+                        </div>
+                        <div class="settings-form-actions">
+                            <button class="btn-sm success" id="btn-save-favorite">Save</button>
+                            <button class="btn-sm" id="btn-cancel-favorite">Cancel</button>
+                        </div>
+                    </div>
+                    <button class="btn-sm" id="btn-add-favorite" style="margin-top:8px">+ Add Favorite</button>
+                </div>
+                <!-- Remote Hosts -->
+                <div id="settings-remotes" class="settings-panel">
+                    <div id="remotes-settings-list"></div>
+                    <button class="btn-sm" id="btn-add-remote" style="margin-top:8px">+ Add Remote Host</button>
+                </div>
+                <!-- Users -->
+                <div id="settings-users" class="settings-panel">
+                    <div id="users-settings-list"></div>
+                    <div class="settings-add-form" id="add-user-form" style="display:none">
+                        <div class="settings-field">
+                            <label>Username</label>
+                            <input type="text" id="new-user-username" placeholder="username">
+                        </div>
+                        <div class="settings-field">
+                            <label>Password</label>
+                            <input type="password" id="new-user-password" placeholder="password">
+                        </div>
+                        <div class="settings-field">
+                            <label>Role</label>
+                            <select id="new-user-role">
+                                <option value="user">User</option>
+                                <option value="admin">Admin</option>
+                            </select>
+                        </div>
+                        <div class="settings-form-actions">
+                            <button class="btn-sm success" id="btn-save-user">Save</button>
+                            <button class="btn-sm" id="btn-cancel-user">Cancel</button>
+                        </div>
+                    </div>
+                    <button class="btn-sm" id="btn-add-user" style="margin-top:8px">+ Add User</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Keyboard Shortcuts Help -->
+    <div id="shortcuts-overlay" class="settings-overlay hidden">
+        <div class="settings-modal" style="width:450px">
+            <div class="settings-header">
+                <h2>Keyboard Shortcuts</h2>
+                <button class="settings-close" id="shortcuts-close">&times;</button>
+            </div>
+            <div class="settings-body">
+                <div class="shortcut-list">
+                    <div class="shortcut-row"><kbd>Ctrl+1</kbd><span>Switch to Terminal</span></div>
+                    <div class="shortcut-row"><kbd>Ctrl+2</kbd><span>Switch to Chat</span></div>
+                    <div class="shortcut-row"><kbd>Ctrl+3</kbd><span>Switch to Files</span></div>
+                    <div class="shortcut-row"><kbd>Ctrl+T</kbd><span>New Terminal</span></div>
+                    <div class="shortcut-row"><kbd>Ctrl+W</kbd><span>Close Terminal Tab</span></div>
+                    <div class="shortcut-row"><kbd>Ctrl+Shift+&larr;/&rarr;</kbd><span>Switch Terminal Tabs</span></div>
+                    <div class="shortcut-row"><kbd>Ctrl+K</kbd><span>Focus Chat Input</span></div>
+                    <div class="shortcut-row"><kbd>Ctrl+,</kbd><span>Open Settings</span></div>
+                    <div class="shortcut-row"><kbd>Ctrl+/</kbd><span>Search Sessions</span></div>
+                    <div class="shortcut-row"><kbd>Escape</kbd><span>Close Modal / Panel</span></div>
+                    <div class="shortcut-row"><kbd>?</kbd><span>Show This Help</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Project Instructions Wizard Modal -->
+    <div id="wizard-overlay" class="settings-overlay hidden">
+        <div class="settings-modal wizard-modal">
+            <div class="settings-header">
+                <h2>Create CLAUDE.md</h2>
+                <button class="settings-close" id="wizard-close">&times;</button>
+            </div>
+            <!-- Step indicators -->
+            <div class="wizard-steps">
+                <div class="wizard-step active" data-step="1"><span class="wizard-step-num">1</span> Basics</div>
+                <div class="wizard-step" data-step="2"><span class="wizard-step-num">2</span> Architecture</div>
+                <div class="wizard-step" data-step="3"><span class="wizard-step-num">3</span> Code Style</div>
+                <div class="wizard-step" data-step="4"><span class="wizard-step-num">4</span> Development</div>
+                <div class="wizard-step" data-step="5"><span class="wizard-step-num">5</span> Review</div>
+            </div>
+            <div class="wizard-body">
+                <!-- Step 1: Basics -->
+                <div class="wizard-panel active" data-wizard-step="1">
+                    <div class="settings-field">
+                        <label>Project Name</label>
+                        <input type="text" id="wiz-name" placeholder="my-project">
+                    </div>
+                    <div class="settings-field">
+                        <label>Description</label>
+                        <textarea id="wiz-description" rows="2" placeholder="Brief project description..."></textarea>
+                    </div>
+                    <div class="settings-field">
+                        <label>Language</label>
+                        <select id="wiz-language">
+                            <option value="">Auto-detect</option>
+                            <option value="JavaScript">JavaScript</option>
+                            <option value="TypeScript">TypeScript</option>
+                            <option value="Python">Python</option>
+                            <option value="Rust">Rust</option>
+                            <option value="Go">Go</option>
+                            <option value="Java">Java</option>
+                            <option value="C++">C++</option>
+                            <option value="Ruby">Ruby</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="settings-field">
+                        <label>Framework(s)</label>
+                        <input type="text" id="wiz-framework" placeholder="e.g., React, Flask, Express...">
+                    </div>
+                </div>
+                <!-- Step 2: Architecture -->
+                <div class="wizard-panel" data-wizard-step="2">
+                    <div class="settings-field">
+                        <label>Key Directories (one per line)</label>
+                        <textarea id="wiz-dirs" rows="5" placeholder="src/&#10;lib/&#10;tests/&#10;docs/"></textarea>
+                    </div>
+                    <div class="settings-field">
+                        <label>Important Files (one per line)</label>
+                        <textarea id="wiz-files" rows="4" placeholder="package.json&#10;tsconfig.json&#10;Makefile"></textarea>
+                    </div>
+                    <div class="settings-field">
+                        <label>Architecture Notes</label>
+                        <textarea id="wiz-arch-notes" rows="4" placeholder="Describe the overall architecture, patterns used, etc."></textarea>
+                    </div>
+                </div>
+                <!-- Step 3: Code Style -->
+                <div class="wizard-panel" data-wizard-step="3">
+                    <div class="settings-field">
+                        <label>Indentation</label>
+                        <select id="wiz-indent">
+                            <option value="2 spaces">2 Spaces</option>
+                            <option value="4 spaces">4 Spaces</option>
+                            <option value="tabs">Tabs</option>
+                        </select>
+                    </div>
+                    <div class="settings-field">
+                        <label>Max Line Length</label>
+                        <input type="number" id="wiz-line-length" value="100" min="40" max="200">
+                    </div>
+                    <div class="settings-field">
+                        <label>Naming Convention</label>
+                        <select id="wiz-naming">
+                            <option value="camelCase">camelCase</option>
+                            <option value="snake_case">snake_case</option>
+                            <option value="PascalCase">PascalCase</option>
+                            <option value="kebab-case">kebab-case</option>
+                        </select>
+                    </div>
+                    <div class="settings-field">
+                        <label>Additional Style Rules</label>
+                        <textarea id="wiz-style-rules" rows="3" placeholder="e.g., Prefer const over let, use arrow functions..."></textarea>
+                    </div>
+                </div>
+                <!-- Step 4: Development -->
+                <div class="wizard-panel" data-wizard-step="4">
+                    <div class="settings-field">
+                        <label>Build Command</label>
+                        <input type="text" id="wiz-build-cmd" placeholder="npm run build">
+                    </div>
+                    <div class="settings-field">
+                        <label>Test Command</label>
+                        <input type="text" id="wiz-test-cmd" placeholder="npm test">
+                    </div>
+                    <div class="settings-field">
+                        <label>Dev Server Command</label>
+                        <input type="text" id="wiz-dev-cmd" placeholder="npm run dev">
+                    </div>
+                    <div class="settings-field">
+                        <label>Lint Command</label>
+                        <input type="text" id="wiz-lint-cmd" placeholder="npm run lint">
+                    </div>
+                    <div class="settings-field">
+                        <label>Setup Steps</label>
+                        <textarea id="wiz-setup-steps" rows="3" placeholder="1. npm install&#10;2. cp .env.example .env&#10;3. npm run dev"></textarea>
+                    </div>
+                    <div class="settings-field">
+                        <label>Git Workflow Notes</label>
+                        <textarea id="wiz-git-notes" rows="2" placeholder="e.g., Use conventional commits, branch from main..."></textarea>
+                    </div>
+                </div>
+                <!-- Step 5: Review -->
+                <div class="wizard-panel" data-wizard-step="5">
+                    <div class="wizard-review-toggle">
+                        <button class="btn-sm active" id="wiz-view-preview">Preview</button>
+                        <button class="btn-sm" id="wiz-view-source">Source</button>
+                    </div>
+                    <div id="wiz-preview" class="wizard-preview"></div>
+                    <textarea id="wiz-source" class="wizard-source hidden" rows="20"></textarea>
+                    <div class="settings-field" style="margin-top:12px;">
+                        <label><input type="checkbox" id="wiz-create-settings" style="width:auto; margin-right:6px;">Also create .claude/settings.json</label>
+                    </div>
+                    <div id="wiz-settings-options" style="display:none;">
+                        <div class="settings-field">
+                            <label>Permission Level</label>
+                            <select id="wiz-permissions-level">
+                                <option value="default">Default (ask for all)</option>
+                                <option value="permissive">Permissive (allow file edits, commands)</option>
+                                <option value="strict">Strict (deny all by default)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Navigation -->
+            <div class="wizard-nav">
+                <button class="btn-sm" id="wiz-prev" style="visibility:hidden;">&larr; Previous</button>
+                <div class="wizard-nav-spacer"></div>
+                <button class="btn-sm success" id="wiz-next">Next &rarr;</button>
+                <button class="btn-sm success" id="wiz-create" style="display:none;">Create CLAUDE.md</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Remote Server Setup Wizard -->
+    <div id="remote-wizard-overlay" class="settings-overlay hidden">
+        <div class="settings-modal wizard-modal remote-wizard-modal">
+            <div class="settings-header">
+                <h2>Add Remote Server</h2>
+                <button class="settings-close" id="remote-wizard-close">&times;</button>
+            </div>
+            <div class="wizard-steps" id="remote-wizard-steps">
+                <div class="wizard-step active" data-step="1"><span class="wizard-step-num">1</span> Method</div>
+                <div class="wizard-step" data-step="2"><span class="wizard-step-num">2</span> Connect</div>
+                <div class="wizard-step" data-step="3"><span class="wizard-step-num">3</span> SSH Key</div>
+                <div class="wizard-step" data-step="4"><span class="wizard-step-num">4</span> Verify</div>
+                <div class="wizard-step" data-step="5"><span class="wizard-step-num">5</span> Save</div>
+            </div>
+            <div class="wizard-body" id="remote-wizard-body">
+                <!-- Step 1: Method -->
+                <div class="wizard-panel active" data-rw-step="1">
+                    <div class="rw-method-cards" id="rw-method-cards"></div>
+                </div>
+                <!-- Step 2: Connection + Password -->
+                <div class="wizard-panel" data-rw-step="2">
+                    <div class="settings-field">
+                        <label>Hostname / IP</label>
+                        <input type="text" id="rw-hostname" placeholder="192.168.1.100 or server.example.com" autocomplete="off">
+                    </div>
+                    <div style="display:flex;gap:12px;">
+                        <div class="settings-field" style="flex:1">
+                            <label>Username</label>
+                            <input type="text" id="rw-username" placeholder="deploy" autocomplete="off">
+                        </div>
+                        <div class="settings-field" style="width:100px">
+                            <label>Port</label>
+                            <input type="number" id="rw-port" value="22" min="1" max="65535">
+                        </div>
+                    </div>
+                    <div class="settings-field">
+                        <label>Password <span style="color:var(--text-secondary);font-weight:normal;font-size:0.75rem">(for SSH key setup only, never stored)</span></label>
+                        <input type="password" id="rw-password" placeholder="SSH password" autocomplete="off">
+                    </div>
+                </div>
+                <!-- Step 3: Autonomous SSH Key Setup -->
+                <div class="wizard-panel" data-rw-step="3">
+                    <div id="rw-auth-progress" class="rw-progress-list"></div>
+                    <div id="rw-manual-section" style="display:none;">
+                        <p style="font-size:0.85rem;color:var(--text-secondary);margin:12px 0 8px;">
+                            Run this command in another terminal to copy your SSH key:
+                        </p>
+                        <pre id="rw-manual-cmd" class="rw-code-block"></pre>
+                        <div style="display:flex;gap:8px;">
+                            <button class="btn-sm" id="rw-manual-copy">Copy Command</button>
+                            <button class="btn-sm success" id="rw-manual-retry">I've done it, verify now</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Step 4: Verification -->
+                <div class="wizard-panel" data-rw-step="4">
+                    <div id="rw-verify-results" class="rw-progress-list"></div>
+                </div>
+                <!-- Step 5: Save -->
+                <div class="wizard-panel" data-rw-step="5">
+                    <div id="rw-mount-section" style="display:none;">
+                        <div class="settings-field">
+                            <label>Local Mount Path</label>
+                            <input type="text" id="rw-mount-path" placeholder="/mnt/nas/projects">
+                        </div>
+                    </div>
+                    <div class="settings-field">
+                        <label>Friendly Name</label>
+                        <input type="text" id="rw-name" placeholder="Production Server">
+                    </div>
+                    <div class="settings-field" id="rw-default-path-field">
+                        <label>Default Remote Path</label>
+                        <input type="text" id="rw-default-path" placeholder="~/projects" value="~">
+                    </div>
+                    <div id="rw-summary" class="rw-summary-box" style="display:none;"></div>
+                </div>
+            </div>
+            <div class="wizard-nav">
+                <button class="btn-sm" id="rw-prev" style="visibility:hidden;">&larr; Back</button>
+                <div class="wizard-nav-spacer"></div>
+                <button class="btn-sm success" id="rw-next">Next &rarr;</button>
+                <button class="btn-sm success" id="rw-save" style="display:none;">Save Server</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/static/sw.js').catch(() => {});
+        }
+    </script>
+</body>
+</html>

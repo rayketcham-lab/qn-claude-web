@@ -1,0 +1,26 @@
+# QN Code Assistant - Systemd Service
+#
+# To install:
+#   sudo cp qn-code-assistant.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable qn-code-assistant
+#   sudo systemctl start qn-code-assistant
+#
+# To view logs:
+#   sudo journalctl -u qn-code-assistant -f
+
+[Unit]
+Description=QN Code Assistant
+After=network.target
+
+[Service]
+Type=simple
+User=claude
+WorkingDirectory=/opt/claude-web
+ExecStart=/usr/bin/python3 /opt/claude-web/app.py
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

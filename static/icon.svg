@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#1a1a2e"/>
+  <rect x="24" y="24" width="464" height="464" rx="80" fill="#16213e" stroke="#2d2d44" stroke-width="4"/>
+  <text x="256" y="300" text-anchor="middle" font-family="SF Mono, Consolas, monospace" font-size="220" font-weight="700" fill="#da7756">CC</text>
+  <text x="256" y="400" text-anchor="middle" font-family="SF Mono, Consolas, monospace" font-size="72" fill="#e94560">web</text>
+</svg>
