@@ -22,7 +22,7 @@ jobs:
   # full unittest suite, asserting a minimum test count.
   # ---------------------------------------------------------------------------
   unit-tests:
-    runs-on: self-hosted
+    runs-on: [self-hosted, qnca]
 
     steps:
       - name: Checkout code
@@ -59,7 +59,7 @@ jobs:
   # produces the self-extracting release artifact.
   # ---------------------------------------------------------------------------
   build-verify:
-    runs-on: self-hosted
+    runs-on: [self-hosted, qnca]
     needs: unit-tests
 
     steps:

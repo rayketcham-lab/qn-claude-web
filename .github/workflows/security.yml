@@ -35,7 +35,7 @@ jobs:
   # before any scans run.
   # ---------------------------------------------------------------------------
   preflight:
-    runs-on: self-hosted
+    runs-on: [self-hosted, qnca]
 
     steps:
       - name: Verify application is reachable
@@ -58,7 +58,7 @@ jobs:
   # Runs the integration test suite against the live application.
   # ---------------------------------------------------------------------------
   integration-tests:
-    runs-on: self-hosted
+    runs-on: [self-hosted, qnca]
     needs: preflight
 
     steps:
@@ -78,7 +78,7 @@ jobs:
   # Runs the Python-based pentest suite and uploads results as artifacts.
   # ---------------------------------------------------------------------------
   pentest:
-    runs-on: self-hosted
+    runs-on: [self-hosted, qnca]
     needs: preflight
 
     steps:
@@ -110,7 +110,7 @@ jobs:
   # uploads results as artifacts.
   # ---------------------------------------------------------------------------
   kali-scan:
-    runs-on: self-hosted
+    runs-on: [self-hosted, qnca]
     needs: preflight
 
     steps:
