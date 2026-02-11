@@ -61,6 +61,18 @@ class ClaudeCodeWeb {
         this._rwVerifyResults = {};
         this._rwBusy = false;
         this._lastAction = {};  // debounce guard: { actionName: timestamp }
+        this._editingFile = null;  // path of file being edited, or null
+        this._editDirty = false;   // whether editor content has been modified
+        this._aceEditor = null;    // Ace Editor instance for edit mode
+        this._aceLoadPromise = null; // lazy-load promise for ace.js
+        this._viewerMode = 'view'; // 'view', 'edit', or 'diff'
+        this._viewerTransition = false; // guard against overlapping mode switches
+
+        // Agent management state
+        this._agentLibrary = [];
+        this._activeAgents = [];
+        this._customAgents = [];
+        this._agentCategoryFilter = 'all';
 
         // DOM Elements
         this.elements = {
@@ -81,9 +93,22 @@ class ClaudeCodeWeb {
         this.flags = {
             resume: document.getElementById('flag-resume'),
             continue: document.getElementById('flag-continue'),
-            dangerously_skip_permissions: document.getElementById('flag-skip-perms'),
             verbose: document.getElementById('flag-verbose'),
+            printMode: document.getElementById('flag-print-mode'),
+            printPrompt: document.getElementById('flag-print-prompt'),
+            permissionMode: document.getElementById('flag-permission-mode'),
             model: document.getElementById('model-select'),
+            effortLevel: document.getElementById('flag-effort-level'),
+            extendedThinking: document.getElementById('flag-extended-thinking'),
+            thinkingTokens: document.getElementById('flag-thinking-tokens'),
+            systemPrompt: document.getElementById('flag-system-prompt'),
+            fallbackModel: document.getElementById('flag-fallback-model'),
+            autocompactThreshold: document.getElementById('flag-autocompact-threshold'),
+            allowedTools: document.getElementById('flag-allowed-tools'),
+            disallowedTools: document.getElementById('flag-disallowed-tools'),
+            addDirs: document.getElementById('flag-add-dirs'),
+            mcpConfig: document.getElementById('flag-mcp-config'),
+            agentTeams: document.getElementById('flag-agent-teams'),
         };
 
         this.init();
@@ -112,6 +137,7 @@ class ClaudeCodeWeb {
         this.loadConfig().then(() => {
             this.loadProjects();
             this.applyTheme(this.config.theme || 'dark');
+            this.loadAgentLibrary();
         });
         this.initTerminalWelcome();
         this.restorePersistentSession();
@@ -133,7 +159,7 @@ class ClaudeCodeWeb {
 
             const header = document.querySelector('.sidebar-header h1');
             if (header && status.version) {
-                header.textContent = `Claude Code v${status.version}`;
+                header.innerHTML = `QN Code Assistant <a href="#" id="version-link" class="version-link">v${this._escapeHtml(status.version)}</a>`;
             }
 
             if (status.claude_version) {
@@ -173,6 +199,27 @@ class ClaudeCodeWeb {
         if (addRemoteForm) addRemoteForm.style.display = 'none';
     }
 
+    async openChangelog() {
+        const overlay = document.getElementById('changelog-overlay');
+        const body = document.getElementById('changelog-body');
+        overlay.classList.remove('hidden');
+        // Use cached content if available
+        if (this._changelogHtml) {
+            body.innerHTML = this._changelogHtml;
+            return;
+        }
+        body.innerHTML = '<div style="color:var(--text-secondary);padding:20px;text-align:center;">Loading...</div>';
+        try {
+            const response = await fetch('/api/changelog');
+            const data = await response.json();
+            this._changelogHtml = '<div class="changelog-content">' +
+                this.renderMarkdown(data.content || '# Changelog\n\nNo content.') + '</div>';
+            body.innerHTML = this._changelogHtml;
+        } catch (error) {
+            body.innerHTML = '<div style="color:var(--error);padding:20px;">Failed to load changelog.</div>';
+        }
+    }
+
     populateSettingsForm() {
         document.getElementById('setting-projects-root').value = this.config.projects_root || '';
         document.getElementById('setting-timeout').value = this.config.process_timeout_minutes || 60;
@@ -186,6 +233,7 @@ class ClaudeCodeWeb {
         this.renderRemotesSettings();
         this.populateAuthSettings();
         this.renderUsersSettings();
+        this.renderCustomAgentsList();
     }
 
     async populateAuthSettings() {
@@ -520,7 +568,7 @@ class ClaudeCodeWeb {
 
             // Update section label to show remote context
             const label = document.getElementById('projects-section-label');
-            label.innerHTML = `<span style="cursor:pointer;opacity:0.6;margin-right:6px;" title="Back to local projects" id="back-to-local">&larr;</span>${this._escapeHtml(host.name)} Projects`;
+            label.innerHTML = `<span style="cursor:pointer;color:var(--accent);font-weight:bold;margin-right:6px;font-size:1.1rem;" title="Back to local projects" id="back-to-local">&larr;</span>${this._escapeHtml(host.name)} Projects`;
             document.getElementById('back-to-local').addEventListener('click', (e) => {
                 e.stopPropagation();
                 this.selectedRemoteHostId = null;
@@ -696,6 +744,36 @@ class ClaudeCodeWeb {
             if (e.key === 'Enter') document.getElementById('nav-go').click();
         });
 
+        // Launch option controls
+        document.getElementById('flag-effort-level').addEventListener('click', (e) => {
+            const btn = e.target.closest('.toggle-btn');
+            if (!btn) return;
+            document.querySelectorAll('#flag-effort-level .toggle-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        });
+
+        document.getElementById('flag-extended-thinking').addEventListener('change', (e) => {
+            document.getElementById('thinking-tokens-wrap').classList.toggle('hidden', !e.target.checked);
+        });
+
+        document.getElementById('flag-print-mode').addEventListener('change', (e) => {
+            document.getElementById('print-prompt-wrap').classList.toggle('hidden', !e.target.checked);
+        });
+
+        document.getElementById('launch-options-toggle').addEventListener('click', () => {
+            const body = document.getElementById('launch-options-body');
+            const arrow = document.querySelector('#launch-options-toggle .toggle-arrow');
+            body.classList.toggle('hidden');
+            arrow.textContent = body.classList.contains('hidden') ? '\u25B6' : '\u25BC';
+        });
+
+        document.getElementById('advanced-options-toggle').addEventListener('click', () => {
+            const panel = document.getElementById('advanced-options');
+            const arrow = document.querySelector('#advanced-options-toggle .toggle-arrow');
+            panel.classList.toggle('hidden');
+            arrow.textContent = panel.classList.contains('hidden') ? '\u25B6' : '\u25BC';
+        });
+
         // Terminal buttons
         document.getElementById('btn-new-terminal').addEventListener('click', () => {
             this.createTerminal();
@@ -705,6 +783,13 @@ class ClaudeCodeWeb {
             if (!this.activeTerminalId) return;
             const ok = await this.confirm('Kill Terminal', 'Are you sure you want to kill this terminal session?');
             if (ok) this.killTerminal();
+        });
+
+        document.getElementById('btn-compact').addEventListener('click', () => {
+            if (this.activeTerminalId && this.terminals[this.activeTerminalId] && !this.terminals[this.activeTerminalId].closed) {
+                this.socket.emit('terminal_input', { id: this.activeTerminalId, data: '/compact\n' });
+                this.showToast('Sent /compact to terminal', 'info');
+            }
         });
 
         // Chat
@@ -789,6 +874,70 @@ class ClaudeCodeWeb {
         });
         document.getElementById('btn-save-user').addEventListener('click', () => this.addUser());
 
+        // Agent Teams checkbox toggles sidebar summary
+        document.getElementById('flag-agent-teams').addEventListener('change', (e) => {
+            const summary = document.getElementById('sidebar-agents-summary');
+            if (summary) summary.classList.toggle('hidden', !e.target.checked);
+        });
+
+        // Open agents modal from sidebar
+        document.getElementById('btn-open-agents-modal').addEventListener('click', () => this.openAgentsModal());
+
+        // Agents modal close
+        document.getElementById('agents-modal-close').addEventListener('click', () => this.closeAgentsModal());
+        document.getElementById('agents-overlay').addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) this.closeAgentsModal();
+        });
+
+        // Agents modal filter (delegated)
+        document.getElementById('agents-modal-filter').addEventListener('click', (e) => {
+            const btn = e.target.closest('.btn-sm');
+            if (!btn || !btn.dataset.category) return;
+            document.querySelectorAll('#agents-modal-filter .btn-sm').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            this._agentCategoryFilter = btn.dataset.category;
+            this.renderAgentModalGrid();
+        });
+
+        // Agents modal grid (delegated)
+        document.getElementById('agents-modal-grid').addEventListener('click', (e) => {
+            const card = e.target.closest('.agent-card');
+            if (!card || card.classList.contains('locked')) return;
+            const agentId = card.dataset.agentId;
+            if (!agentId) return;
+            const idx = this._activeAgents.indexOf(agentId);
+            if (idx >= 0) {
+                this._activeAgents.splice(idx, 1);
+            } else if (this._activeAgents.length < 5) {
+                this._activeAgents.push(agentId);
+            } else {
+                this.showToast('Maximum 5 agents allowed (+ Sentinel)', 'warning');
+                return;
+            }
+            this.renderAgentModalGrid();
+            this.updateAgentCount();
+        });
+
+        // Save & Close in agents modal
+        document.getElementById('btn-save-agents-modal').addEventListener('click', () => {
+            this.saveAgentConfig().then(() => this.closeAgentsModal());
+        });
+
+        // Custom agents (in settings modal)
+        document.getElementById('btn-add-custom-agent').addEventListener('click', () => {
+            const form = document.getElementById('add-custom-agent-form');
+            form.style.display = form.style.display === 'none' ? 'block' : 'none';
+            form.dataset.editIndex = '';
+            document.getElementById('custom-agent-name').value = '';
+            document.getElementById('custom-agent-description').value = '';
+            document.getElementById('custom-agent-content').value = '';
+        });
+        document.getElementById('btn-cancel-custom-agent').addEventListener('click', () => {
+            document.getElementById('add-custom-agent-form').style.display = 'none';
+        });
+        document.getElementById('btn-save-custom-agent').addEventListener('click', () => this.saveCustomAgent());
+        document.getElementById('btn-save-agents').addEventListener('click', () => this.saveAgentConfig());
+
         // Export chat
         document.getElementById('btn-export-chat').addEventListener('click', () => this.exportChat());
 
@@ -818,6 +967,44 @@ class ClaudeCodeWeb {
             });
         }
 
+        // Tooltips — prevent tip clicks from toggling parent checkboxes
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('.tip')) e.preventDefault();
+        }, true);
+
+        // Tooltips (global delegated handler)
+        let tipPopup = null;
+        document.addEventListener('mouseenter', (e) => {
+            const tip = e.target.closest('.tip');
+            if (!tip || !tip.dataset.tip) return;
+            if (tipPopup) tipPopup.remove();
+            tipPopup = document.createElement('div');
+            tipPopup.className = 'tip-popup';
+            tipPopup.textContent = tip.dataset.tip;
+            document.body.appendChild(tipPopup);
+            const rect = tip.getBoundingClientRect();
+            // Position to the right of the icon, vertically centered
+            let top = rect.top + rect.height / 2 - tipPopup.offsetHeight / 2;
+            let left = rect.right + 10;
+            // If it overflows right, show to the left
+            if (left + tipPopup.offsetWidth > window.innerWidth - 10) {
+                left = rect.left - tipPopup.offsetWidth - 10;
+            }
+            // Keep within viewport vertically
+            if (top < 10) top = 10;
+            if (top + tipPopup.offsetHeight > window.innerHeight - 10) {
+                top = window.innerHeight - tipPopup.offsetHeight - 10;
+            }
+            tipPopup.style.top = top + 'px';
+            tipPopup.style.left = left + 'px';
+        }, true);
+        document.addEventListener('mouseleave', (e) => {
+            if (e.target.closest('.tip') && tipPopup) {
+                tipPopup.remove();
+                tipPopup = null;
+            }
+        }, true);
+
         // Shortcuts overlay
         document.getElementById('shortcuts-close').addEventListener('click', () => {
             document.getElementById('shortcuts-overlay').classList.add('hidden');
@@ -826,7 +1013,21 @@ class ClaudeCodeWeb {
             if (e.target === e.currentTarget) e.currentTarget.classList.add('hidden');
         });
 
-        // Remote mode toggle
+        // Changelog modal
+        document.getElementById('changelog-close').addEventListener('click', () => {
+            document.getElementById('changelog-overlay').classList.add('hidden');
+        });
+        document.getElementById('changelog-overlay').addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) e.currentTarget.classList.add('hidden');
+        });
+        // Version link (delegated since it's created dynamically)
+        document.querySelector('.sidebar-header').addEventListener('click', (e) => {
+            const link = e.target.closest('#version-link');
+            if (!link) return;
+            e.preventDefault();
+            this.openChangelog();
+        });
+
         // Auto-follow toggle
         if (this.elements.autoFollow) {
             this.elements.autoFollow.addEventListener('change', () => {
@@ -1938,6 +2139,10 @@ class ClaudeCodeWeb {
     // ============== File Browser ==============
 
     async loadFiles(path) {
+        if (this._editDirty && !confirm('You have unsaved changes. Discard?')) return;
+        this._editingFile = null;
+        this._editDirty = false;
+
         const tree = document.getElementById('files-tree');
         const viewer = document.getElementById('files-viewer');
         if (!tree) return;
@@ -2011,6 +2216,15 @@ class ClaudeCodeWeb {
         if (now - (this._lastAction.viewFile || 0) < 300) return;
         this._lastAction.viewFile = now;
 
+        // Dirty guard: confirm before leaving unsaved edits
+        if (this._editDirty && path !== this._editingFile) {
+            if (!confirm('You have unsaved changes. Discard?')) return;
+        }
+        this._destroyAceEditor();
+        this._editingFile = null;
+        this._editDirty = false;
+        this._viewerMode = 'view';
+
         const viewer = document.getElementById('files-viewer');
         if (!viewer) return;
 
@@ -2025,6 +2239,10 @@ class ClaudeCodeWeb {
                 return;
             }
 
+            // Determine project path for diff button (backend walks up to find git root)
+            const projectPath = this.selectedProject || this._filesCurrentPath || '';
+            const relativePath = path.startsWith(projectPath) ? path.slice(projectPath.length + 1) : data.name;
+
             // Sanitize language class to prevent injection
             const safeLang = data.language ? data.language.replace(/[^a-zA-Z0-9_-]/g, '') : '';
             const langClass = safeLang ? ` class="language-${safeLang}"` : '';
@@ -2032,9 +2250,31 @@ class ClaudeCodeWeb {
                 <div class="file-viewer-header">
                     <span class="file-viewer-name">${this._escapeHtml(data.name)}</span>
                     <span class="file-viewer-meta">${parseInt(data.lines) || 0} lines | ${this._formatSize(data.size)}</span>
+                    <div class="file-viewer-actions">
+                        <button class="btn-diff" data-path="${this._escapeHtml(path)}" data-project="${this._escapeHtml(projectPath)}" data-rel="${this._escapeHtml(relativePath)}" title="Show git diff" style="display:none">Diff</button>
+                        <button class="btn-edit" data-path="${this._escapeHtml(data.path)}">Edit</button>
+                    </div>
                 </div>
                 <pre class="file-viewer-code"><code${langClass}>${this._escapeHtml(data.content)}</code></pre>
             `;
+
+            // Store raw content for edit mode
+            viewer.dataset.filePath = data.path;
+
+            // Edit button handler
+            viewer.querySelector('.btn-edit').addEventListener('click', () => {
+                this._enterEditMode(data.path, data.content, data.language);
+            });
+
+            // Diff button: show only if file is in a git repo (async check)
+            const diffBtn = viewer.querySelector('.btn-diff');
+            diffBtn.addEventListener('click', () => {
+                this._showDiffView(diffBtn.dataset.project, diffBtn.dataset.rel, data.path);
+            });
+            fetch(`/api/git/status?path=${encodeURIComponent(projectPath)}`)
+                .then(r => r.json())
+                .then(s => { if (s.is_git) diffBtn.style.display = ''; })
+                .catch(() => {});
 
             // Syntax highlighting
             viewer.querySelectorAll('pre code').forEach(block => {
@@ -2043,6 +2283,309 @@ class ClaudeCodeWeb {
             this.addCopyButtons(viewer);
         } catch (e) {
             viewer.innerHTML = `<div class="empty-state"><p style="color:var(--error)">Failed to read file</p></div>`;
+        }
+    }
+
+    _getAceMode(language) {
+        const modeMap = {
+            'python': 'python', 'javascript': 'javascript', 'json': 'json',
+            'html': 'html', 'css': 'css', 'markdown': 'markdown',
+            'bash': 'sh', 'shell': 'sh', 'yaml': 'yaml', 'xml': 'xml',
+            'sql': 'sql', 'rust': 'rust', 'go': 'golang', 'java': 'java',
+            'c': 'c_cpp', 'cpp': 'c_cpp', 'ruby': 'ruby', 'php': 'php',
+            'typescript': 'typescript', 'toml': 'toml', 'dockerfile': 'dockerfile',
+            'makefile': 'makefile', 'lua': 'lua', 'perl': 'perl'
+        };
+        return modeMap[language] || 'text';
+    }
+
+    _loadAce() {
+        if (typeof ace !== 'undefined') return Promise.resolve();
+        if (this._aceLoadPromise) return this._aceLoadPromise;
+        this._aceLoadPromise = new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = '/static/js/ace/ace.js';
+            script.onload = resolve;
+            script.onerror = () => { this._aceLoadPromise = null; reject(new Error('Failed to load Ace Editor')); };
+            document.head.appendChild(script);
+        });
+        return this._aceLoadPromise;
+    }
+
+    async _enterEditMode(path, content, language) {
+        if (this._viewerTransition) return;
+        this._viewerTransition = true;
+        const viewer = document.getElementById('files-viewer');
+        if (!viewer) { this._viewerTransition = false; return; }
+
+        this._destroyAceEditor();
+        this._editingFile = path;
+        this._editDirty = false;
+        this._viewerMode = 'edit';
+
+        const name = path.split('/').pop();
+        viewer.innerHTML = `
+            <div class="file-viewer-header">
+                <span class="file-viewer-name">${this._escapeHtml(name)}</span>
+                <span class="file-edit-indicator">Editing</span>
+                <div class="file-viewer-actions">
+                    <button class="btn-save">Save</button>
+                    <button class="btn-cancel">Cancel</button>
+                </div>
+            </div>
+            <div id="ace-editor-container" class="ace-editor-container"></div>
+        `;
+
+        // Lazy-load Ace Editor on first use
+        try { await this._loadAce(); } catch {}
+
+        // Initialize Ace Editor
+        if (typeof ace !== 'undefined') {
+            ace.config.set('basePath', '/static/js/ace');
+            this._aceEditor = ace.edit('ace-editor-container');
+            this._aceEditor.setTheme('ace/theme/one_dark');
+            const mode = this._getAceMode(language);
+            this._aceEditor.session.setMode(`ace/mode/${mode}`);
+            this._aceEditor.setValue(content, -1);
+            this._aceEditor.setOptions({
+                fontSize: '13px',
+                showPrintMargin: false,
+                tabSize: 4,
+                useSoftTabs: true,
+                wrap: false
+            });
+
+            // Track dirty state
+            this._aceEditor.session.on('change', () => {
+                this._editDirty = true;
+            });
+
+            // Ctrl+S to save
+            this._aceEditor.commands.addCommand({
+                name: 'save',
+                bindKey: { win: 'Ctrl-S', mac: 'Cmd-S' },
+                exec: () => this._saveFile(path)
+            });
+
+            // Resize handler for window/container changes
+            this._aceResizeHandler = () => this._aceEditor?.resize();
+            window.addEventListener('resize', this._aceResizeHandler);
+
+            this._aceEditor.focus();
+        } else {
+            // Fallback to textarea if Ace isn't loaded
+            const container = document.getElementById('ace-editor-container');
+            container.outerHTML = `<textarea class="file-editor-textarea" spellcheck="false">${this._escapeHtml(content)}</textarea>`;
+            const textarea = viewer.querySelector('.file-editor-textarea');
+            textarea.addEventListener('input', () => { this._editDirty = true; });
+            textarea.addEventListener('keydown', (e) => {
+                if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    this._saveFile(path);
+                }
+            });
+            textarea.focus();
+        }
+
+        viewer.querySelector('.btn-save').addEventListener('click', () => this._saveFile(path));
+        viewer.querySelector('.btn-cancel').addEventListener('click', () => this._exitEditMode());
+
+        // beforeunload guard
+        this._beforeUnloadHandler = (e) => {
+            if (this._editDirty) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        };
+        window.addEventListener('beforeunload', this._beforeUnloadHandler);
+        this._viewerTransition = false;
+    }
+
+    _destroyAceEditor() {
+        if (this._aceResizeHandler) {
+            window.removeEventListener('resize', this._aceResizeHandler);
+            this._aceResizeHandler = null;
+        }
+        if (this._aceEditor) {
+            this._aceEditor.destroy();
+            this._aceEditor = null;
+        }
+    }
+
+    _exitEditMode() {
+        if (this._editDirty) {
+            if (!confirm('You have unsaved changes. Discard?')) return;
+        }
+        if (this._beforeUnloadHandler) {
+            window.removeEventListener('beforeunload', this._beforeUnloadHandler);
+            this._beforeUnloadHandler = null;
+        }
+        this._destroyAceEditor();
+        const path = this._editingFile;
+        this._editingFile = null;
+        this._editDirty = false;
+        this._viewerMode = 'view';
+        if (path) this.viewFile(path);
+    }
+
+    async _saveFile(path) {
+        const viewer = document.getElementById('files-viewer');
+        let content;
+
+        if (this._aceEditor) {
+            content = this._aceEditor.getValue();
+        } else {
+            const textarea = viewer?.querySelector('.file-editor-textarea');
+            if (!textarea) return;
+            content = textarea.value;
+        }
+
+        const saveBtn = viewer?.querySelector('.btn-save');
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving...';
+        }
+
+        try {
+            const response = await fetch('/api/files/write', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path, content })
+            });
+            const data = await response.json();
+
+            if (data.error) {
+                alert('Save failed: ' + data.error);
+                if (saveBtn) {
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = 'Save';
+                }
+                return;
+            }
+
+            this._editDirty = false;
+            this._exitEditMode();
+        } catch (e) {
+            alert('Save failed: network error');
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Save';
+            }
+        }
+    }
+
+    async _showDiffView(projectPath, relativePath, fullPath) {
+        if (this._viewerTransition) return;
+        this._viewerTransition = true;
+        const viewer = document.getElementById('files-viewer');
+        if (!viewer) { this._viewerTransition = false; return; }
+
+        this._destroyAceEditor();
+        this._viewerMode = 'diff';
+        const name = fullPath.split('/').pop();
+
+        viewer.innerHTML = '<div class="empty-state"><div class="loading"></div><p>Loading diff...</p></div>';
+
+        try {
+            const response = await fetch(`/api/git/diff?path=${encodeURIComponent(projectPath)}&file=${encodeURIComponent(relativePath)}`);
+            if (this._viewerMode !== 'diff') { this._viewerTransition = false; return; } // mode changed during fetch
+            const data = await response.json();
+
+            if (data.error) {
+                viewer.innerHTML = `<div class="empty-state"><p style="color:var(--error)">${this._escapeHtml(data.error)}</p></div>`;
+                this._viewerTransition = false;
+                return;
+            }
+
+            if (!data.diffs || data.diffs.length === 0) {
+                viewer.innerHTML = `
+                    <div class="file-viewer-header">
+                        <span class="file-viewer-name">${this._escapeHtml(name)}</span>
+                        <span class="file-viewer-meta">Diff</span>
+                        <div class="file-viewer-actions">
+                            <button class="btn-cancel">Back</button>
+                        </div>
+                    </div>
+                    <div class="diff-empty-state">No changes detected for this file</div>
+                `;
+                viewer.querySelector('.btn-cancel').addEventListener('click', () => this.viewFile(fullPath));
+                this._viewerTransition = false;
+                return;
+            }
+
+            const stats = data.stats || {};
+            let html = `
+                <div class="file-viewer-header">
+                    <span class="file-viewer-name">${this._escapeHtml(name)}</span>
+                    <span class="file-viewer-meta">Diff</span>
+                    <div class="file-viewer-actions">
+                        <button class="btn-edit" data-path="${this._escapeHtml(fullPath)}">Edit</button>
+                        <button class="btn-cancel">Back</button>
+                    </div>
+                </div>
+                <div class="diff-summary">
+                    <span class="badge badge-files">${stats.files_changed || 0} file${(stats.files_changed || 0) !== 1 ? 's' : ''}</span>
+                    <span class="badge badge-add">+${stats.insertions || 0}</span>
+                    <span class="badge badge-del">-${stats.deletions || 0}</span>
+                </div>
+                <div class="diff-view">
+            `;
+
+            let oldLineNum = 0;
+            let newLineNum = 0;
+
+            for (const diff of data.diffs) {
+                html += `<div class="diff-file-header">${this._escapeHtml(diff.file)}</div>`;
+
+                if (diff.binary) {
+                    html += '<div class="diff-binary-notice">Binary file changed</div>';
+                    continue;
+                }
+
+                for (const hunk of diff.hunks) {
+                    // Parse hunk header for line numbers: @@ -old,count +new,count @@
+                    const match = hunk.header.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+                    if (match) {
+                        oldLineNum = parseInt(match[1]);
+                        newLineNum = parseInt(match[2]);
+                    }
+                    html += `<div class="diff-hunk-header">${this._escapeHtml(hunk.header)}</div>`;
+
+                    for (const line of hunk.lines) {
+                        const safeContent = this._escapeHtml(line.content);
+                        if (line.type === 'add') {
+                            html += `<div class="diff-line add"><span class="diff-line-num"></span><span class="diff-line-num">${newLineNum}</span><span class="diff-line-content">${safeContent}</span></div>`;
+                            newLineNum++;
+                        } else if (line.type === 'remove') {
+                            html += `<div class="diff-line remove"><span class="diff-line-num">${oldLineNum}</span><span class="diff-line-num"></span><span class="diff-line-content">${safeContent}</span></div>`;
+                            oldLineNum++;
+                        } else {
+                            html += `<div class="diff-line context"><span class="diff-line-num">${oldLineNum}</span><span class="diff-line-num">${newLineNum}</span><span class="diff-line-content">${safeContent}</span></div>`;
+                            oldLineNum++;
+                            newLineNum++;
+                        }
+                    }
+                }
+            }
+
+            html += '</div>';
+            viewer.innerHTML = html;
+
+            // Wire up buttons
+            viewer.querySelector('.btn-cancel').addEventListener('click', () => this.viewFile(fullPath));
+            const editBtn = viewer.querySelector('.btn-edit');
+            if (editBtn) {
+                editBtn.addEventListener('click', async () => {
+                    const resp = await fetch(`/api/files/read?path=${encodeURIComponent(fullPath)}`);
+                    const fileData = await resp.json();
+                    if (!fileData.error) this._enterEditMode(fullPath, fileData.content, fileData.language);
+                });
+            }
+
+            this._viewerTransition = false;
+        } catch (e) {
+            viewer.innerHTML = `<div class="empty-state"><p style="color:var(--error)">Failed to load diff</p></div>`;
+            this._viewerTransition = false;
         }
     }
 
@@ -3016,12 +3559,34 @@ class ClaudeCodeWeb {
     // ============== Utilities ==============
 
     getFlags() {
+        const effortBtn = this.flags.effortLevel?.querySelector('.toggle-btn.active');
+        const effortLevel = effortBtn ? effortBtn.dataset.value : 'high';
+
         return {
             resume: this.flags.resume.checked,
             continue: this.flags.continue.checked,
-            dangerously_skip_permissions: this.flags.dangerously_skip_permissions.checked,
             verbose: this.flags.verbose.checked,
-            model: this.flags.model.value || null
+            print_mode: this.flags.printMode.checked,
+            print_prompt: this.flags.printMode.checked
+                ? (this.flags.printPrompt.value.trim() || null)
+                : null,
+            permission_mode: this.flags.permissionMode.value || null,
+            model: this.flags.model.value || null,
+            effort_level: effortLevel !== 'high' ? effortLevel : null,
+            extended_thinking: this.flags.extendedThinking.checked,
+            thinking_tokens: this.flags.extendedThinking.checked
+                ? (parseInt(this.flags.thinkingTokens.value) || 31999)
+                : null,
+            system_prompt: this.flags.systemPrompt.value.trim() || null,
+            fallback_model: this.flags.fallbackModel.value || null,
+            autocompact_threshold: this.flags.autocompactThreshold.value
+                ? parseInt(this.flags.autocompactThreshold.value) || null
+                : null,
+            allowed_tools: this.flags.allowedTools.value.trim() || null,
+            disallowed_tools: this.flags.disallowedTools.value.trim() || null,
+            add_dirs: this.flags.addDirs.value.trim() || null,
+            mcp_config: this.flags.mcpConfig.value.trim() || null,
+            agent_teams: this.flags.agentTeams?.checked || false,
         };
     }
 
@@ -3092,6 +3657,216 @@ class ClaudeCodeWeb {
         }
         cleanNode(doc.body);
         return doc.body.innerHTML;
+    }
+
+    // ============== Agent Management ==============
+
+    async loadAgentLibrary() {
+        try {
+            const response = await fetch('/api/agents/library');
+            const data = await response.json();
+            this._agentLibrary = Array.isArray(data) ? data : (data.agents || []);
+            this._activeAgents = (this.config.active_agents || []).filter(
+                id => this._agentLibrary.some(a => a.id === id)
+            );
+            this._customAgents = this.config.custom_agents || [];
+            this.renderSidebarAgentSummary();
+            this.updateAgentCount();
+            this.renderCustomAgentsList();
+            // Auto-show summary if agents were previously configured
+            if (this._activeAgents.length > 0 && this.flags.agentTeams) {
+                this.flags.agentTeams.checked = true;
+                const summary = document.getElementById('sidebar-agents-summary');
+                if (summary) summary.classList.remove('hidden');
+            }
+        } catch (error) {
+            console.error('Failed to load agent library:', error);
+        }
+    }
+
+    openAgentsModal() {
+        this._agentCategoryFilter = 'all';
+        document.querySelectorAll('#agents-modal-filter .btn-sm').forEach(b => b.classList.remove('active'));
+        const allBtn = document.querySelector('#agents-modal-filter .btn-sm[data-category="all"]');
+        if (allBtn) allBtn.classList.add('active');
+        document.getElementById('agents-overlay').classList.remove('hidden');
+        this.renderAgentModalGrid();
+        this.updateAgentCount();
+    }
+
+    closeAgentsModal() {
+        document.getElementById('agents-overlay').classList.add('hidden');
+        this.renderSidebarAgentSummary();
+    }
+
+    renderAgentModalGrid() {
+        const grid = document.getElementById('agents-modal-grid');
+        if (!grid) return;
+
+        const filter = this._agentCategoryFilter;
+        const agents = filter === 'all'
+            ? this._agentLibrary
+            : this._agentLibrary.filter(a => a.category === filter);
+
+        if (agents.length === 0) {
+            grid.innerHTML = '<div style="color:var(--text-secondary);padding:12px;">No agents in this category</div>';
+            return;
+        }
+
+        grid.innerHTML = agents.map(agent => {
+            const isActive = this._activeAgents.includes(agent.id);
+            const isLocked = agent.locked;
+            const classes = ['agent-card'];
+            if (isActive) classes.push('active');
+            if (isLocked) classes.push('locked');
+            return `<div class="${classes.join(' ')}" data-agent-id="${agent.id}">
+                <div class="agent-card-header">
+                    <span class="agent-icon">${agent.icon || '&#129302;'}</span>
+                    <span class="agent-name">${this._escapeHtml(agent.name)}</span>
+                </div>
+                <div class="agent-description">${this._escapeHtml(agent.description)}</div>
+                <div class="agent-card-footer">
+                    <span class="badge badge-${agent.category}">${agent.category}</span>
+                    ${isLocked ? '<span class="badge badge-locked">Always On</span>' : ''}
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    renderSidebarAgentSummary() {
+        const list = document.getElementById('sidebar-agents-list');
+        if (!list) return;
+
+        // Always show Sentinel tag
+        let tags = '<span class="sidebar-agent-tag sentinel"><span class="tag-icon">&#128737;</span> Sentinel</span>';
+
+        // Add active agent tags
+        for (const agentId of this._activeAgents) {
+            const agent = this._agentLibrary.find(a => a.id === agentId);
+            if (agent) {
+                tags += `<span class="sidebar-agent-tag"><span class="tag-icon">${agent.icon || '&#129302;'}</span> ${this._escapeHtml(agent.name)}</span>`;
+            }
+        }
+
+        if (this._activeAgents.length === 0) {
+            tags += '<span style="color:var(--text-secondary);font-size:0.7rem;margin-left:4px;">+ 0 agents</span>';
+        }
+
+        list.innerHTML = tags;
+    }
+
+    updateAgentCount() {
+        const countEl = document.getElementById('agents-modal-count');
+        if (countEl) countEl.textContent = this._activeAgents.length;
+    }
+
+    renderCustomAgentsList() {
+        const list = document.getElementById('custom-agents-list');
+        if (!list) return;
+
+        if (this._customAgents.length === 0) {
+            list.innerHTML = '<div style="color:var(--text-secondary);font-size:0.85rem;">No custom agents</div>';
+            return;
+        }
+
+        list.innerHTML = this._customAgents.map((agent, idx) => `
+            <div class="settings-item" data-index="${idx}">
+                <div class="settings-item-info">
+                    <div class="settings-item-name">${this._escapeHtml(agent.name)}</div>
+                    <div class="settings-item-detail">${this._escapeHtml(agent.description || '')}</div>
+                </div>
+                <div class="settings-item-actions">
+                    <button class="btn-sm" data-action="edit-agent" data-agent-index="${idx}">Edit</button>
+                    <button class="btn-sm danger" data-action="remove-agent" data-agent-index="${idx}">Remove</button>
+                </div>
+            </div>
+        `).join('');
+
+        list.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-action]');
+            if (!btn) return;
+            const idx = parseInt(btn.dataset.agentIndex);
+            if (btn.dataset.action === 'edit-agent') this.editCustomAgent(idx);
+            else if (btn.dataset.action === 'remove-agent') this.removeCustomAgent(idx);
+        });
+    }
+
+    saveCustomAgent() {
+        const name = document.getElementById('custom-agent-name').value.trim();
+        const description = document.getElementById('custom-agent-description').value.trim();
+        const content = document.getElementById('custom-agent-content').value.trim();
+
+        if (!name || !content) {
+            this.showToast('Name and definition are required', 'warning');
+            return;
+        }
+
+        const form = document.getElementById('add-custom-agent-form');
+        const editIndex = form.dataset.editIndex;
+
+        if (editIndex !== '' && editIndex !== undefined) {
+            this._customAgents[parseInt(editIndex)] = { name, description, content };
+        } else {
+            if (this._customAgents.length >= 2) {
+                this.showToast('Maximum 2 custom agents allowed', 'warning');
+                return;
+            }
+            this._customAgents.push({ name, description, content });
+        }
+
+        form.style.display = 'none';
+        form.dataset.editIndex = '';
+        document.getElementById('custom-agent-name').value = '';
+        document.getElementById('custom-agent-description').value = '';
+        document.getElementById('custom-agent-content').value = '';
+        this.renderCustomAgentsList();
+        this.showToast('Custom agent saved (click Save Agent Configuration to persist)', 'info');
+    }
+
+    editCustomAgent(index) {
+        const agent = this._customAgents[index];
+        if (!agent) return;
+        const form = document.getElementById('add-custom-agent-form');
+        form.style.display = 'block';
+        form.dataset.editIndex = index;
+        document.getElementById('custom-agent-name').value = agent.name;
+        document.getElementById('custom-agent-description').value = agent.description || '';
+        document.getElementById('custom-agent-content').value = agent.content || '';
+    }
+
+    async removeCustomAgent(index) {
+        const agent = this._customAgents[index];
+        const ok = await this.confirm('Remove Custom Agent', `Remove "${agent?.name || 'this agent'}"?`);
+        if (!ok) return;
+        this._customAgents.splice(index, 1);
+        this.renderCustomAgentsList();
+        this.showToast('Custom agent removed (click Save Agent Configuration to persist)', 'info');
+    }
+
+    async saveAgentConfig() {
+        const data = {
+            active_agents: this._activeAgents,
+            custom_agents: this._customAgents,
+        };
+
+        try {
+            const response = await fetch('/api/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            const result = await response.json();
+            if (result.success) {
+                this.config.active_agents = this._activeAgents;
+                this.config.custom_agents = this._customAgents;
+                this.showToast('Agent configuration saved', 'success');
+            } else {
+                this.showToast('Error: ' + (result.error || 'Failed to save'), 'error');
+            }
+        } catch (error) {
+            console.error('Failed to save agent config:', error);
+            this.showToast('Failed to save agent configuration', 'error');
+        }
     }
 
     formatDate(isoString) {

@@ -2,7 +2,79 @@
 
 All notable changes to QN Code Assistant.
 
-## [1.3.2] - 2026-02-10
+## [1.4.0] - 2026-02-10
+
+### Added
+- **In-Browser Code Editor** - Ace Editor integration for editing files directly in the browser
+  - Syntax highlighting for 23 languages (Python, JS, TS, Rust, Go, Java, C/C++, Ruby, PHP, and more)
+  - Ctrl+S / Cmd+S keyboard shortcut to save
+  - Dirty state tracking with unsaved changes warnings on navigate, cancel, and tab close
+  - Textarea fallback when Ace fails to load
+  - Lazy-loaded on first use (432KB ace.js not loaded until Edit is clicked)
+- **Git Diff View** - Visual diff renderer in the file viewer
+  - Green/red line-by-line additions and removals with line numbers
+  - Hunk headers and diff summary badges (files changed, insertions, deletions)
+  - Binary file change detection with clear indicator
+  - Diff button hidden for non-git files (async git status check)
+  - Backend walks up directory tree to find git root (works from subdirectories)
+- **Ace Editor vendored locally** - 30 files at `static/js/ace/` (no CDN dependency)
+  - 23 language modes, 4 web workers, One Dark theme
+  - Version tracked in `static/js/ace/VERSION` (v1.32.6) for CVE auditing
+- `GET /api/git/diff` endpoint - structured diff data with parsed hunks, stats, and binary detection
+
+### Security
+- **Path traversal hardening** - `..` and absolute path rejection on git diff file filter
+- **TOCTOU protection** - Re-resolve path after `validate_file_path()` in git diff endpoint
+- **Error response sanitization** - Exception messages and git stderr no longer leaked to client; logged server-side
+- **Atomic file writes** - Editor save uses write-to-temp-then-rename pattern (prevents partial writes)
+- **Diff response bounded** - Structured diff array capped at 100 files to prevent memory exhaustion
+- **Git diff encoding safety** - `encoding='utf-8', errors='replace'` prevents UnicodeDecodeError crashes
+- **Ace integrity verification** - `static/js/ace/` directory included in installer SHA-256 hash checks
+- Removed dead `/api/git/diff/file` endpoint (zero callers, expanded attack surface)
+
+### Fixed
+- **Cancel button dirty guard** - Now prompts for confirmation before discarding unsaved editor changes
+- **Ace Editor resize** - Window resize listener calls `aceEditor.resize()` for correct rendering
+- **Mode transition races** - `_viewerTransition` flag prevents overlapping async view/edit/diff switches
+- **Unmapped Ace modes removed** - Dropped `r`, `swift`, `kotlin`, `scala` entries with no vendored mode files
+
+### Changed
+- Ace Editor release archive included in `build-release.sh` ZIP creation
+- Installer now verifies 15 items (13 files + vendor/ + ace/)
+- Git status endpoint error responses sanitized (no `str(e)` leakage)
+- Version bumped to 1.4.0
+
+## [1.3.3] - 2026-01-18
+
+### Added
+- **Agent Management System** - Select up to 5 agents from a library of 20 predefined roles
+  - Sentinel (context watchdog) always active, not toggleable
+  - 3 categories: Core (6), Specialist (6), Domain (8)
+  - Agent card grid in sidebar under Advanced Options with category filters
+  - Custom agent creation (max 2) in Settings modal
+  - Agents deployed as `.md` files to project's `.claude/agents/` on terminal launch
+  - `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` env var set when enabled
+- **CLI Feature Tier 2** - Advanced launch options
+  - Print mode (`-p`) with one-shot prompt textarea
+  - Tool restrictions (`--allowedTools` / `--disallowedTools`)
+  - Additional directories (`--add-dir`)
+  - MCP server config (`--mcp-config`)
+  - Compact trigger button (sends `/compact` to active terminal)
+  - Auto-compact threshold (`CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`)
+  - Fallback model (`--fallback-model`)
+- **Clickable changelog** - Version number in sidebar opens changelog modal
+
+### Fixed
+- **Sidebar overflow** - Advanced options now scroll instead of pushing content off-screen
+- **Agent library API** - Fixed response format mismatch (bare list vs wrapped object)
+
+### Changed
+- Sidebar widened from 320px to 360px default (min 320, max 480)
+- Agent selection moved from settings modal to sidebar advanced options
+- Settings "Agents" tab renamed to "Custom Agents" (predefined agents in sidebar)
+- Version bumped to 1.3.3
+
+## [1.3.2] - 2025-12-28
 
 ### Added
 - **Remote Server Setup Wizard** - 5-step guided wizard for adding remote hosts
@@ -37,7 +109,7 @@ All notable changes to QN Code Assistant.
 - Remote host inline form replaced with wizard modal
 - Version bumped to 1.3.2
 
-## [1.3.1] - 2026-02-09
+## [1.3.1] - 2025-12-02
 
 ### Added
 - **Project Instructions Wizard** - 5-step guided questionnaire to generate CLAUDE.md files for any project
@@ -70,7 +142,7 @@ All notable changes to QN Code Assistant.
 ### Changed
 - Version bumped to 1.3.1
 
-## [1.3.0] - 2026-02-09
+## [1.3.0] - 2025-11-12
 
 ### Added
 - **Keyboard Shortcuts**: Global shortcuts (Ctrl+1/2/3 views, Ctrl+T new terminal, Ctrl+W close, Ctrl+K focus chat, Ctrl+, settings, ? help overlay)
@@ -102,7 +174,7 @@ All notable changes to QN Code Assistant.
 ### Fixed
 - View tab switching now properly initializes file browser on first open
 
-## [1.2.0] - 2026-02-06
+## [1.2.0] - 2025-10-03
 
 ### Added
 - **Authentication**: Password-protected access with login page and first-run setup
@@ -136,7 +208,7 @@ All notable changes to QN Code Assistant.
 - Multi-session chat tabs (replaced with single persistent session)
 - Sessions sidebar tab (projects only now)
 
-## [1.1.0] - 2026-02-05
+## [1.1.0] - 2025-09-08
 
 ### Added
 - Health check `/api/status` with version, uptime, claude CLI version
@@ -149,7 +221,7 @@ All notable changes to QN Code Assistant.
 - Remote hosts - Mount mode and SSH mode
 - API endpoints: `/api/config`, `/api/remote/test`, `/api/remote/<id>/projects`
 
-## [1.0.0] - 2026-02-05
+## [1.0.0] - 2025-08-15
 
 ### Initial Release
 
@@ -170,7 +242,10 @@ All notable changes to QN Code Assistant.
 
 ## Planned Features
 
-- [ ] File editing in browser
+- [x] File editing in browser (v1.4.0)
+- [ ] Multi-CLI support (Aider, Codex, Gemini)
+- [ ] Approval workflow controls
+- [ ] Audit logging
+- [ ] Docker sandboxing
 - [ ] Collaborative multi-user sessions
 - [ ] Plugin system
-- [ ] CI/CD integration

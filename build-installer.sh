@@ -77,6 +77,17 @@ else
     echo -e "  vendor/ (${VENDOR_FILE_COUNT} files): ${VENDOR_HASH}"
 fi
 
+# Compute aggregate hash for static/js/ace/ directory
+ACE_DIR="${SCRIPT_DIR}/static/js/ace"
+if [[ ! -d "${ACE_DIR}" ]]; then
+    echo -e "${RED}Error: static/js/ace/ directory not found.${NC}" >&2
+    MISSING=1
+else
+    ACE_FILE_COUNT="$(find "${ACE_DIR}" -type f -not -path '*/__pycache__/*' | wc -l)"
+    ACE_HASH="$(cd "${SCRIPT_DIR}" && find static/js/ace/ -type f -not -path '*/__pycache__/*' -print0 | sort -z | xargs -0 $SHA_CMD | $SHA_CMD | awk '{print $1}')"
+    echo -e "  static/js/ace/ (${ACE_FILE_COUNT} files): ${ACE_HASH}"
+fi
+
 if [[ "${MISSING}" -eq 1 ]]; then
     echo -e "${RED}Aborting: one or more project files are missing.${NC}" >&2
     exit 1
@@ -141,10 +152,12 @@ cat >> "${INSTALLER}" << 'HASH_MAP_END'
 
 HASH_MAP_END
 
-# Inject vendor hash
+# Inject vendor hash and ace hash
 cat >> "${INSTALLER}" << EOF
 VENDOR_HASH="${VENDOR_HASH}"
 VENDOR_FILE_COUNT="${VENDOR_FILE_COUNT}"
+ACE_HASH="${ACE_HASH}"
+ACE_FILE_COUNT="${ACE_FILE_COUNT}"
 EOF
 
 # Now write the rest of the installer logic
@@ -249,6 +262,30 @@ verify_integrity() {
             failed=1
         else
             log_info "Verified: vendor/ (${actual_count} files)"
+        fi
+        checked=$((checked + 1))
+    fi
+
+    # Verify static/js/ace/ directory
+    local ace_dir="${INSTALL_DIR}/static/js/ace"
+    if [[ ! -d "${ace_dir}" ]]; then
+        log_error "Missing directory: static/js/ace/"
+        tampered_files+=("static/js/ace/ (MISSING)")
+        failed=1
+    else
+        local ace_actual_count
+        ace_actual_count="$(find "${ace_dir}" -type f -not -path '*/__pycache__/*' | wc -l)"
+        local ace_actual_hash
+        ace_actual_hash="$(cd "${INSTALL_DIR}" && find static/js/ace/ -type f -not -path '*/__pycache__/*' -print0 | sort -z | xargs -0 $sha_cmd | $sha_cmd | awk '{print $1}')"
+
+        if [[ "${ace_actual_hash}" != "${ACE_HASH}" ]]; then
+            log_error "Hash mismatch: static/js/ace/ (${ace_actual_count} files)"
+            echo "         Expected: ${ACE_HASH}"
+            echo "         Actual:   ${ace_actual_hash}"
+            tampered_files+=("static/js/ace/")
+            failed=1
+        else
+            log_info "Verified: static/js/ace/ (${ace_actual_count} files)"
         fi
         checked=$((checked + 1))
     fi
@@ -737,7 +774,7 @@ echo ""
 echo -e "${GREEN}${BOLD}Installer generated successfully!${NC}"
 echo -e "  Output: ${INSTALLER}"
 echo -e "  Version: ${VERSION}"
-echo -e "  Files tracked: ${#PROJECT_FILES[@]} + vendor/ (${VENDOR_FILE_COUNT} files)"
+echo -e "  Files tracked: ${#PROJECT_FILES[@]} + vendor/ (${VENDOR_FILE_COUNT} files) + ace/ (${ACE_FILE_COUNT} files)"
 echo ""
 echo -e "Test with: ${YELLOW}./install.sh --verify-only${NC}"
 echo ""

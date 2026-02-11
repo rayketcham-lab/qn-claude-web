@@ -61,6 +61,10 @@ if [[ ! -d "${SCRIPT_DIR}/vendor" ]]; then
     echo -e "${RED}Missing: vendor/${NC}"
     MISSING=1
 fi
+if [[ ! -d "${SCRIPT_DIR}/static/js/ace" ]]; then
+    echo -e "${RED}Missing: static/js/ace/${NC}"
+    MISSING=1
+fi
 if [[ "${MISSING}" -eq 1 ]]; then
     echo -e "${RED}Aborting: missing files.${NC}"
     exit 1
@@ -88,6 +92,13 @@ with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
             filepath = os.path.join(root, fn)
             zf.write(filepath)
 
+    # Add static/js/ace/ directory
+    for root, dirs, filenames in os.walk('static/js/ace'):
+        dirs[:] = [d for d in dirs if d != '__pycache__']
+        for fn in filenames:
+            filepath = os.path.join(root, fn)
+            zf.write(filepath)
+
 buf.seek(0)
 print(base64.b64encode(buf.read()).decode(), end='')
 ")
@@ -100,9 +111,10 @@ echo -e "  Archive size: ${ARCHIVE_SIZE_MB}MB (base64 encoded)"
 FILE_COUNT=$(cd "${SCRIPT_DIR}" && python3 -c "
 import os
 count = len('''$(printf '%s\n' "${INCLUDE_FILES[@]}")'''.strip().split('\n'))
-for root, dirs, files in os.walk('vendor'):
-    dirs[:] = [d for d in dirs if d != '__pycache__']
-    count += len(files)
+for walk_dir in ['vendor', 'static/js/ace']:
+    for root, dirs, files in os.walk(walk_dir):
+        dirs[:] = [d for d in dirs if d != '__pycache__']
+        count += len(files)
 print(count)
 ")
 echo -e "  Files included: ${FILE_COUNT}"

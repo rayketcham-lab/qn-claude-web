@@ -12,6 +12,7 @@ import re
 import select
 import shlex
 import subprocess
+import tempfile
 import threading
 import uuid
 import signal
@@ -34,7 +35,7 @@ app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins=None, async_mode='threading')
 
 # Version info
-VERSION = "1.3.2"
+VERSION = "1.4.0"
 START_TIME = datetime.now()
 
 # ============== Rate Limiting ==============
@@ -107,6 +108,8 @@ def load_config():
         'persistent_session_id': '',
         'theme': 'dark',
         'users': [],
+        'active_agents': ['architect', 'builder', 'tester', 'secops', 'devops'],
+        'custom_agents': [],
     }
     if CONFIG_FILE.exists():
         try:
@@ -129,7 +132,9 @@ def load_config():
         except (TypeError, ValueError):
             defaults[key] = fallback
     for key, fallback in [('favorites', []), ('remote_hosts', []), ('default_flags', []),
-                          ('allowed_paths', ['/opt']), ('users', [])]:
+                          ('allowed_paths', ['/opt']), ('users', []),
+                          ('active_agents', ['architect', 'builder', 'tester', 'secops', 'devops']),
+                          ('custom_agents', [])]:
         if not isinstance(defaults.get(key), list):
             defaults[key] = fallback
 
@@ -402,10 +407,212 @@ def _sanitize_model_name(model):
     """Validate model name contains only safe characters"""
     if not model:
         return None
-    # Only allow alphanumeric, hyphens, dots, colons, underscores
-    if not re.match(r'^[a-zA-Z0-9._:-]+$', model):
+    # Allow alphanumeric, hyphens, dots, colons, underscores, brackets (for [1m] suffix)
+    if not re.match(r'^[a-zA-Z0-9._:\[\]\-]+$', model):
         return None
     return model
+
+
+# ============== Agent Library ==============
+# 20 predefined agent templates for Claude Code agent teams.
+# Sentinel is always active (locked). Users select up to 5 others.
+
+def _load_agent_file(filename, fallback=''):
+    """Load agent definition from .claude/agents/ directory."""
+    path = os.path.join(os.path.dirname(__file__), '.claude', 'agents', filename)
+    if os.path.exists(path):
+        with open(path, 'r') as f:
+            return f.read()
+    return fallback
+
+AGENT_LIBRARY = {
+    'sentinel': {
+        'id': 'sentinel', 'name': 'Sentinel', 'category': 'core',
+        'description': 'Context window watchdog — monitors utilization, forces compaction',
+        'icon': '&#x1F6E1;', 'locked': True, 'filename': 'sentinel.md',
+        'content': _load_agent_file('sentinel.md', '# Sentinel Agent\n\nContext window watchdog. Monitors utilization and forces compaction at thresholds.\n'),
+    },
+    'architect': {
+        'id': 'architect', 'name': 'Architect', 'category': 'core',
+        'description': 'System design, API contracts, dependency decisions',
+        'icon': '&#x1F3D7;', 'locked': False, 'filename': 'architect.md',
+        'content': _load_agent_file('architect.md', '# Architect Agent\n\nSystem design authority.\n'),
+    },
+    'builder': {
+        'id': 'builder', 'name': 'Builder', 'category': 'core',
+        'description': 'Feature implementation, refactoring, code generation',
+        'icon': '&#x1F528;', 'locked': False, 'filename': 'builder.md',
+        'content': _load_agent_file('builder.md', '# Builder Agent\n\nPrimary implementation engine.\n'),
+    },
+    'tester': {
+        'id': 'tester', 'name': 'Tester', 'category': 'core',
+        'description': 'Test creation, coverage analysis, edge case identification',
+        'icon': '&#x1F9EA;', 'locked': False, 'filename': 'tester.md',
+        'content': _load_agent_file('tester.md', '# Tester Agent\n\nQuality gatekeeper.\n'),
+    },
+    'secops': {
+        'id': 'secops', 'name': 'SecOps', 'category': 'core',
+        'description': 'Security review, vulnerability analysis, compliance',
+        'icon': '&#x1F512;', 'locked': False, 'filename': 'secops.md',
+        'content': _load_agent_file('secops.md', '# SecOps Agent\n\nSecurity authority.\n'),
+    },
+    'devops': {
+        'id': 'devops', 'name': 'DevOps', 'category': 'core',
+        'description': 'CI/CD, build systems, deployment, infrastructure',
+        'icon': '&#x2699;', 'locked': False, 'filename': 'devops.md',
+        'content': _load_agent_file('devops.md', '# DevOps Agent\n\nBuild and deploy authority.\n'),
+    },
+    'researcher': {
+        'id': 'researcher', 'name': 'Researcher', 'category': 'specialist',
+        'description': 'Deep codebase exploration, technology evaluation, API research',
+        'icon': '&#x1F50D;', 'locked': False, 'filename': 'researcher.md',
+        'content': _load_agent_file('researcher.md', '# Researcher Agent\n\nInvestigation specialist.\n'),
+    },
+    'documenter': {
+        'id': 'documenter', 'name': 'Documenter', 'category': 'specialist',
+        'description': 'Documentation writing, API docs, README generation',
+        'icon': '&#x1F4DD;', 'locked': False, 'filename': 'documenter.md',
+        'content': _load_agent_file('documenter.md', '# Documenter Agent\n\nTechnical writer.\n'),
+    },
+    'code-reviewer': {
+        'id': 'code-reviewer', 'name': 'Code Reviewer', 'category': 'specialist',
+        'description': 'Systematic code review, style enforcement, quality metrics',
+        'icon': '&#x1F440;', 'locked': False, 'filename': 'code-reviewer.md',
+        'content': _load_agent_file('code-reviewer.md', '# Code Reviewer Agent\n\nQuality inspector.\n'),
+    },
+    'debugger': {
+        'id': 'debugger', 'name': 'Debugger', 'category': 'specialist',
+        'description': 'Bug hunting, root cause analysis, reproduction steps',
+        'icon': '&#x1F41B;', 'locked': False, 'filename': 'debugger.md',
+        'content': _load_agent_file('debugger.md', '# Debugger Agent\n\nBug detective.\n'),
+    },
+    'optimizer': {
+        'id': 'optimizer', 'name': 'Optimizer', 'category': 'specialist',
+        'description': 'Performance profiling, memory optimization, algorithmic improvements',
+        'icon': '&#x26A1;', 'locked': False, 'filename': 'optimizer.md',
+        'content': _load_agent_file('optimizer.md', '# Optimizer Agent\n\nPerformance engineer.\n'),
+    },
+    'migrator': {
+        'id': 'migrator', 'name': 'Migrator', 'category': 'specialist',
+        'description': 'Version migrations, framework upgrades, deprecation handling',
+        'icon': '&#x1F4E6;', 'locked': False, 'filename': 'migrator.md',
+        'content': _load_agent_file('migrator.md', '# Migrator Agent\n\nUpgrade specialist.\n'),
+    },
+    'frontend': {
+        'id': 'frontend', 'name': 'Frontend', 'category': 'domain',
+        'description': 'UI/UX implementation, CSS, accessibility, browser compatibility',
+        'icon': '&#x1F3A8;', 'locked': False, 'filename': 'frontend.md',
+        'content': _load_agent_file('frontend.md', '# Frontend Agent\n\nUI/UX engineer.\n'),
+    },
+    'backend': {
+        'id': 'backend', 'name': 'Backend', 'category': 'domain',
+        'description': 'Server logic, middleware, business rules, service architecture',
+        'icon': '&#x1F5A5;', 'locked': False, 'filename': 'backend.md',
+        'content': _load_agent_file('backend.md', '# Backend Agent\n\nServer-side engineer.\n'),
+    },
+    'database': {
+        'id': 'database', 'name': 'Database', 'category': 'domain',
+        'description': 'Schema design, query optimization, migration scripts, indexing',
+        'icon': '&#x1F4BE;', 'locked': False, 'filename': 'database.md',
+        'content': _load_agent_file('database.md', '# Database Agent\n\nData architect.\n'),
+    },
+    'api-designer': {
+        'id': 'api-designer', 'name': 'API Designer', 'category': 'domain',
+        'description': 'REST/GraphQL API design, versioning, documentation',
+        'icon': '&#x1F310;', 'locked': False, 'filename': 'api-designer.md',
+        'content': _load_agent_file('api-designer.md', '# API Designer Agent\n\nInterface architect.\n'),
+    },
+    'data-engineer': {
+        'id': 'data-engineer', 'name': 'Data Engineer', 'category': 'domain',
+        'description': 'ETL pipelines, data modeling, data quality, warehousing',
+        'icon': '&#x1F4CA;', 'locked': False, 'filename': 'data-engineer.md',
+        'content': _load_agent_file('data-engineer.md', '# Data Engineer Agent\n\nPipeline architect.\n'),
+    },
+    'ml-engineer': {
+        'id': 'ml-engineer', 'name': 'ML Engineer', 'category': 'domain',
+        'description': 'Model training, evaluation, deployment, MLOps',
+        'icon': '&#x1F916;', 'locked': False, 'filename': 'ml-engineer.md',
+        'content': _load_agent_file('ml-engineer.md', '# ML Engineer Agent\n\nMachine learning specialist.\n'),
+    },
+    'mobile': {
+        'id': 'mobile', 'name': 'Mobile', 'category': 'domain',
+        'description': 'iOS/Android development, cross-platform, responsive design',
+        'icon': '&#x1F4F1;', 'locked': False, 'filename': 'mobile.md',
+        'content': _load_agent_file('mobile.md', '# Mobile Agent\n\nMobile application engineer.\n'),
+    },
+    'infra': {
+        'id': 'infra', 'name': 'Infrastructure', 'category': 'domain',
+        'description': 'Cloud architecture, networking, scaling, cost optimization',
+        'icon': '&#x2601;', 'locked': False, 'filename': 'infra.md',
+        'content': _load_agent_file('infra.md', '# Infrastructure Agent\n\nCloud and systems architect.\n'),
+    },
+}
+
+
+def deploy_agents(project_path, active_agent_ids, custom_agents):
+    """Write active agent .md files to the project's .claude/agents/ directory.
+    Sentinel is always deployed. Returns list of deployed filenames."""
+    agents_dir = os.path.join(project_path, '.claude', 'agents')
+    os.makedirs(agents_dir, exist_ok=True)
+
+    deployed = []
+    # Always deploy sentinel
+    sentinel = AGENT_LIBRARY.get('sentinel')
+    if sentinel:
+        filepath = os.path.join(agents_dir, sentinel['filename'])
+        with open(filepath, 'w') as f:
+            f.write(sentinel['content'])
+        deployed.append(sentinel['filename'])
+
+    # Deploy active predefined agents
+    for agent_id in active_agent_ids:
+        agent = AGENT_LIBRARY.get(agent_id)
+        if agent and agent_id != 'sentinel':
+            filepath = os.path.join(agents_dir, agent['filename'])
+            with open(filepath, 'w') as f:
+                f.write(agent['content'])
+            deployed.append(agent['filename'])
+
+    # Deploy custom agents
+    for i, custom in enumerate(custom_agents or []):
+        if custom.get('content'):
+            filename = f"custom-{i + 1}.md"
+            filepath = os.path.join(agents_dir, filename)
+            with open(filepath, 'w') as f:
+                f.write(custom['content'])
+            deployed.append(filename)
+
+    return deployed
+
+
+def build_claude_env(flags):
+    """Build environment variables dict for Claude process.
+    Starts from current env and adds Claude-specific vars based on flags."""
+    env = os.environ.copy()
+
+    # Extended thinking: MAX_THINKING_TOKENS
+    if flags.get('extended_thinking'):
+        tokens = flags.get('thinking_tokens', 31999)
+        try:
+            tokens = max(1024, min(63999, int(tokens)))
+        except (ValueError, TypeError):
+            tokens = 31999
+        env['MAX_THINKING_TOKENS'] = str(tokens)
+
+    # Auto-compact threshold override
+    autocompact = flags.get('autocompact_threshold')
+    if autocompact is not None:
+        try:
+            autocompact = max(50, min(100, int(autocompact)))
+            env['CLAUDE_AUTOCOMPACT_PCT_OVERRIDE'] = str(autocompact)
+        except (ValueError, TypeError):
+            pass
+
+    # Agent teams experimental flag
+    if flags.get('agent_teams'):
+        env['CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS'] = '1'
+
+    return env
 
 
 def build_claude_command(project_path, flags, prompt=None, remote_host=None):
@@ -417,8 +624,17 @@ def build_claude_command(project_path, flags, prompt=None, remote_host=None):
         cmd.append('-r')
     if flags.get('continue'):
         cmd.append('-c')
-    if flags.get('dangerously_skip_permissions'):
+
+    # Permission mode (replaces dangerously_skip_permissions)
+    perm_mode = flags.get('permission_mode', '')
+    if perm_mode:
+        allowed_modes = ('default', 'acceptEdits', 'plan', 'dontAsk', 'bypassPermissions')
+        if perm_mode in allowed_modes:
+            cmd.extend(['--permission-mode', perm_mode])
+    elif flags.get('dangerously_skip_permissions'):
+        # Backward compat for old saved sessions
         cmd.append('--dangerously-skip-permissions')
+
     if flags.get('verbose'):
         cmd.append('--verbose')
     if flags.get('model'):
@@ -426,12 +642,88 @@ def build_claude_command(project_path, flags, prompt=None, remote_host=None):
         if sanitized_model:
             cmd.extend(['--model', sanitized_model])
 
-    if prompt:
+    # Effort level
+    effort = flags.get('effort_level')
+    if effort and effort in ('low', 'medium', 'high'):
+        cmd.extend(['--effort', effort])
+
+    # Fallback model
+    fallback = flags.get('fallback_model')
+    if fallback:
+        sanitized_fallback = _sanitize_model_name(fallback)
+        if sanitized_fallback:
+            cmd.extend(['--fallback-model', sanitized_fallback])
+
+    # Tool restrictions
+    allowed_tools = flags.get('allowed_tools', '')
+    if allowed_tools:
+        tools = ','.join(t.strip() for t in str(allowed_tools).split(',')
+                         if t.strip() and re.match(r'^[a-zA-Z0-9._-]+$', t.strip()))
+        if tools:
+            cmd.extend(['--allowedTools', tools])
+
+    disallowed_tools = flags.get('disallowed_tools', '')
+    if disallowed_tools:
+        tools = ','.join(t.strip() for t in str(disallowed_tools).split(',')
+                         if t.strip() and re.match(r'^[a-zA-Z0-9._-]+$', t.strip()))
+        if tools:
+            cmd.extend(['--disallowedTools', tools])
+
+    # Additional directories
+    add_dirs = flags.get('add_dirs', '')
+    if add_dirs:
+        for d in str(add_dirs).strip().splitlines():
+            d = d.strip()
+            if d and not any(c in d for c in (';', '&', '|', '`', '$')):
+                cmd.extend(['--add-dir', d])
+
+    # MCP server config
+    mcp_config = flags.get('mcp_config', '')
+    if mcp_config:
+        mcp_config = str(mcp_config).strip()
+        if mcp_config and not any(c in mcp_config for c in (';', '&', '|', '`', '$')):
+            cmd.extend(['--mcp-config', mcp_config])
+
+    # System prompt append
+    system_prompt = flags.get('system_prompt', '')
+    if system_prompt:
+        system_prompt = str(system_prompt)[:10000]
+        cmd.extend(['--append-system-prompt', system_prompt])
+
+    # Print mode (-p): one-shot query
+    if flags.get('print_mode'):
+        cmd.insert(1, '-p')  # -p goes right after 'claude'
+        print_prompt = flags.get('print_prompt', '')
+        if print_prompt:
+            print_prompt = str(print_prompt)[:10000]
+            cmd.append(print_prompt)
+    elif prompt:
         cmd.append(prompt)
 
     # Wrap in SSH if remote host specified
     if remote_host and remote_host.get('mode') == 'ssh':
-        remote_cmd = f'cd {shlex.quote(project_path)} && ' + ' '.join(
+        # Build env var prefix for remote command
+        env_prefix = ''
+        if flags.get('extended_thinking'):
+            tokens = flags.get('thinking_tokens', 31999)
+            try:
+                tokens = max(1024, min(63999, int(tokens)))
+            except (ValueError, TypeError):
+                tokens = 31999
+            env_prefix = f'MAX_THINKING_TOKENS={tokens} '
+
+        autocompact = flags.get('autocompact_threshold')
+        if autocompact is not None:
+            try:
+                autocompact = max(50, min(100, int(autocompact)))
+                env_prefix += f'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE={autocompact} '
+            except (ValueError, TypeError):
+                pass
+
+        if flags.get('agent_teams'):
+            env_prefix += 'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 '
+
+        remote_cmd = f'cd {shlex.quote(project_path)} && {env_prefix}' + ' '.join(
             shlex.quote(c) for c in cmd
         )
 
@@ -679,6 +971,8 @@ def api_get_config():
         'allowed_paths': CONFIG.get('allowed_paths', ['/opt']),
         'allow_full_browsing': CONFIG.get('allow_full_browsing', False),
         'theme': CONFIG.get('theme', 'dark'),
+        'active_agents': CONFIG.get('active_agents', []),
+        'custom_agents': CONFIG.get('custom_agents', []),
     })
 
 
@@ -692,8 +986,24 @@ def api_update_config():
         'max_concurrent_terminals', 'max_concurrent_chats',
         'default_flags', 'favorites', 'remote_hosts',
         'ssl_enabled', 'ssl_cert', 'ssl_key', 'chat_cwd',
-        'allowed_paths', 'allow_full_browsing', 'theme'
+        'allowed_paths', 'allow_full_browsing', 'theme',
+        'active_agents', 'custom_agents'
     ]
+    # Validate agent config before saving
+    if 'active_agents' in data:
+        valid_ids = set(AGENT_LIBRARY.keys()) - {'sentinel'}
+        agents = [a for a in data.get('active_agents', []) if a in valid_ids]
+        data['active_agents'] = agents[:5]  # Max 5
+    if 'custom_agents' in data:
+        customs = data.get('custom_agents', [])
+        if not isinstance(customs, list):
+            customs = []
+        customs = customs[:2]  # Max 2
+        for c in customs:
+            if isinstance(c, dict):
+                c['content'] = str(c.get('content', ''))[:10000]
+                c['name'] = str(c.get('name', 'Custom Agent'))[:50]
+        data['custom_agents'] = [c for c in customs if isinstance(c, dict)]
     for key in allowed_keys:
         if key in data:
             CONFIG[key] = data[key]
@@ -705,6 +1015,23 @@ def api_update_config():
             return jsonify({'success': False, 'error': f'Invalid directory: {data["projects_root"]}'}), 400
     save_config(CONFIG)
     return jsonify({'success': True})
+
+
+@app.route('/api/agents/library')
+@login_required
+def api_agents_library():
+    """Return agent library metadata (without full content)"""
+    library = []
+    for agent_id, agent in AGENT_LIBRARY.items():
+        library.append({
+            'id': agent['id'],
+            'name': agent['name'],
+            'description': agent['description'],
+            'category': agent['category'],
+            'icon': agent['icon'],
+            'locked': agent.get('locked', False),
+        })
+    return jsonify({'agents': library})
 
 
 @app.route('/api/remote/test', methods=['POST'])
@@ -1233,8 +1560,19 @@ def handle_terminal_create(data):
             (h for h in CONFIG.get('remote_hosts', []) if h['id'] == remote_host_id), None
         )
 
-    # Build command (SSH-wrapped if remote)
+    # Deploy agents if agent teams enabled (local only)
+    if flags.get('agent_teams') and not remote_host_id:
+        try:
+            active_agents = CONFIG.get('active_agents', [])
+            custom_agents = CONFIG.get('custom_agents', [])
+            deployed = deploy_agents(project_path, active_agents, custom_agents)
+            print(f"[Agents] Deployed {len(deployed)} agents to {project_path}")
+        except Exception as e:
+            print(f"[Agents] Deploy failed: {e}")
+
+    # Build command and environment (SSH-wrapped if remote)
     cmd = build_claude_command(project_path, flags, remote_host=remote_host)
+    claude_env = build_claude_env(flags)
 
     # For SSH mode, don't chdir locally. For local/mount, chdir to project path
     use_local_chdir = not (remote_host and remote_host.get('mode') == 'ssh')
@@ -1243,8 +1581,10 @@ def handle_terminal_create(data):
     pid, fd = pty.fork()
 
     if pid == 0:
-        # Child process
+        # Child process — set env vars before exec (safe: child has its own address space)
         try:
+            for key, value in claude_env.items():
+                os.environ[key] = value
             if use_local_chdir:
                 os.chdir(project_path)
             os.execvp(cmd[0], cmd)
@@ -1384,8 +1724,9 @@ def handle_chat_message(data):
             (h for h in CONFIG.get('remote_hosts', []) if h['id'] == sess['remote_host_id']), None
         )
 
-    # Build command (SSH-wrapped if remote)
+    # Build command and environment (SSH-wrapped if remote)
     cmd = build_claude_command(sess['project'], sess['flags'], message, remote_host=remote_host)
+    claude_env = build_claude_env(sess['flags'])
 
     # For SSH mode, cwd is irrelevant (cd happens on remote)
     use_cwd = sess['project'] if not (remote_host and remote_host.get('mode') == 'ssh') else None
@@ -1399,7 +1740,8 @@ def handle_chat_message(data):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                bufsize=1
+                bufsize=1,
+                env=claude_env
             )
 
             # Track the process for watchdog
@@ -1635,9 +1977,123 @@ def api_git_status():
     except subprocess.TimeoutExpired:
         result_data['error'] = 'Git command timed out'
     except Exception as e:
-        result_data['error'] = str(e)
+        app.logger.error('Git status error: %s', e)
+        result_data['error'] = 'Git status failed'
 
     return jsonify(result_data)
+
+
+@app.route('/api/git/diff')
+@login_required
+def api_git_diff():
+    """Get git diff for a project path, optionally filtered to a single file"""
+    path = request.args.get('path', '')
+    file_filter = request.args.get('file', '')
+    staged = request.args.get('staged', '') == 'true'
+
+    if not path or '\x00' in path or not Path(path).is_dir():
+        return jsonify({'error': 'Invalid path'}), 400
+    if not validate_file_path(path):
+        return jsonify({'error': 'Path not allowed'}), 403
+
+    # Re-resolve after validation to close TOCTOU symlink swap window
+    try:
+        path = str(Path(path).resolve())
+    except (OSError, ValueError):
+        return jsonify({'error': 'Invalid path'}), 400
+
+    # Walk up to find git root (allows diff from subdirectories)
+    git_root = None
+    check = Path(path)
+    for _ in range(50):  # depth limit
+        if (check / '.git').exists():
+            git_root = str(check)
+            break
+        parent = check.parent
+        if parent == check:
+            break
+        check = parent
+    if not git_root:
+        return jsonify({'error': 'Not a git repository'}), 400
+    if not validate_file_path(git_root):
+        return jsonify({'error': 'Path not allowed'}), 403
+
+    try:
+        cmd = ['git', 'diff']
+        if staged:
+            cmd.append('--cached')
+        cmd.append('--unified=3')
+        if file_filter:
+            # Validate file filter: no null bytes, path traversal, absolute paths, or shell metacharacters
+            if '\x00' in file_filter or '..' in file_filter or file_filter.startswith('/'):
+                return jsonify({'error': 'Invalid file path'}), 400
+            if any(c in file_filter for c in ';&|`$\n\r'):
+                return jsonify({'error': 'Invalid file path'}), 400
+            cmd.extend(['--', file_filter])
+
+        result = subprocess.run(
+            cmd, cwd=git_root, capture_output=True, encoding='utf-8', errors='replace', timeout=10
+        )
+        if result.returncode != 0:
+            app.logger.warning('Git diff failed: %s', result.stderr[:500])
+            return jsonify({'error': 'Git diff failed'}), 500
+
+        # Parse unified diff into structured data
+        diffs = []
+        current_file = None
+        current_hunks = []
+        current_hunk = None
+        files_changed = 0
+        insertions = 0
+        deletions = 0
+
+        current_binary = False
+
+        for line in result.stdout.split('\n'):
+            if line.startswith('diff --git'):
+                if current_file:
+                    entry = {'file': current_file, 'hunks': current_hunks}
+                    if current_binary:
+                        entry['binary'] = True
+                    diffs.append(entry)
+                parts = line.split(' b/')
+                current_file = parts[-1] if len(parts) > 1 else line
+                current_hunks = []
+                current_hunk = None
+                current_binary = False
+                files_changed += 1
+            elif line.startswith('Binary files'):
+                current_binary = True
+            elif line.startswith('@@'):
+                current_hunk = {'header': line, 'lines': []}
+                current_hunks.append(current_hunk)
+            elif current_hunk is not None:
+                if line.startswith('+'):
+                    current_hunk['lines'].append({'type': 'add', 'content': line[1:]})
+                    insertions += 1
+                elif line.startswith('-'):
+                    current_hunk['lines'].append({'type': 'remove', 'content': line[1:]})
+                    deletions += 1
+                else:
+                    current_hunk['lines'].append({'type': 'context', 'content': line[1:] if line.startswith(' ') else line})
+
+        if current_file:
+            entry = {'file': current_file, 'hunks': current_hunks}
+            if current_binary:
+                entry['binary'] = True
+            diffs.append(entry)
+
+        return jsonify({
+            'diffs': diffs[:100],  # Cap at 100 files to prevent memory exhaustion
+            'stats': {'files_changed': files_changed, 'insertions': insertions, 'deletions': deletions}
+        })
+
+    except subprocess.TimeoutExpired:
+        return jsonify({'error': 'Git diff timed out'}), 500
+    except Exception as e:
+        app.logger.error('Git diff error: %s', e)
+        return jsonify({'error': 'Git diff failed'}), 500
+
 
 
 # ============== File Browser API ==============
@@ -1677,15 +2133,22 @@ def api_list_files():
         return jsonify({'error': 'Invalid path'}), 400
 
     path = os.path.expanduser(path)
-    if not os.path.isdir(path):
-        return jsonify({'error': 'Not a directory'}), 400
 
     if not validate_file_path(path):
         return jsonify({'error': 'Path not allowed'}), 403
 
+    # Re-resolve after validation to close TOCTOU symlink swap window
+    try:
+        resolved = str(Path(path).resolve())
+    except (OSError, ValueError):
+        return jsonify({'error': 'Invalid path'}), 400
+
+    if not os.path.isdir(resolved):
+        return jsonify({'error': 'Not a directory'}), 400
+
     items = []
     try:
-        for entry in sorted(os.scandir(path), key=lambda e: (not e.is_dir(), e.name.lower())):
+        for entry in sorted(os.scandir(resolved), key=lambda e: (not e.is_dir(), e.name.lower())):
             if entry.name.startswith('.') and entry.name not in ('.gitignore', '.env.example'):
                 continue
             try:
@@ -1720,28 +2183,35 @@ def api_read_file():
         return jsonify({'error': 'Invalid path'}), 400
 
     path = os.path.expanduser(path)
-    if not os.path.isfile(path):
-        return jsonify({'error': 'Not a file'}), 400
 
     if not validate_file_path(path):
         return jsonify({'error': 'Path not allowed'}), 403
 
+    # Re-resolve after validation to close TOCTOU symlink swap window
+    try:
+        resolved = str(Path(path).resolve())
+    except (OSError, ValueError):
+        return jsonify({'error': 'Invalid path'}), 400
+
+    if not os.path.isfile(resolved):
+        return jsonify({'error': 'Not a file'}), 400
+
     # Size limit: 500KB
-    size = os.path.getsize(path)
+    size = os.path.getsize(resolved)
     if size > 512000:
         return jsonify({'error': f'File too large ({size} bytes, max 500KB)', 'size': size}), 400
 
     # Detect binary
     try:
-        with open(path, 'rb') as f:
+        with open(resolved, 'rb') as f:
             chunk = f.read(1024)
             if b'\x00' in chunk:
                 return jsonify({'error': 'Binary file', 'binary': True, 'size': size}), 400
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except OSError:
+        return jsonify({'error': 'Failed to read file'}), 500
 
     try:
-        with open(path, 'r', encoding='utf-8', errors='replace') as f:
+        with open(resolved, 'r', encoding='utf-8', errors='replace') as f:
             content = f.read()
 
         # Determine language for syntax highlighting
@@ -1767,8 +2237,80 @@ def api_read_file():
             'language': language,
             'lines': content.count('\n') + 1,
         })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except OSError:
+        return jsonify({'error': 'Failed to read file'}), 500
+
+
+@app.route('/api/files/write', methods=['POST'])
+@login_required
+def api_write_file():
+    """Write content to an existing file"""
+    data = request.json or {}
+    path = data.get('path', '')
+
+    if 'content' not in data:
+        return jsonify({'error': 'Content field required'}), 400
+    content = data['content']
+    if not isinstance(content, str):
+        return jsonify({'error': 'Content must be a string'}), 400
+
+    if not path:
+        return jsonify({'error': 'Path required'}), 400
+    if '\x00' in path:
+        return jsonify({'error': 'Invalid path'}), 400
+
+    path = os.path.expanduser(path)
+
+    if not validate_file_path(path):
+        return jsonify({'error': 'Path not allowed'}), 403
+
+    # Re-resolve after validation to close TOCTOU symlink swap window
+    try:
+        resolved = str(Path(path).resolve())
+    except (OSError, ValueError):
+        return jsonify({'error': 'Invalid path'}), 400
+
+    if not os.path.isfile(resolved):
+        return jsonify({'error': 'File does not exist'}), 400
+
+    # Size limit: 500KB
+    if len(content.encode('utf-8')) > 512000:
+        return jsonify({'error': 'Content too large (max 500KB)'}), 400
+
+    # Reject binary files
+    try:
+        with open(resolved, 'rb') as f:
+            chunk = f.read(1024)
+            if b'\x00' in chunk:
+                return jsonify({'error': 'Cannot edit binary files'}), 400
+    except OSError:
+        return jsonify({'error': 'Failed to read file'}), 500
+
+    # Check write permission
+    if not os.access(resolved, os.W_OK):
+        return jsonify({'error': 'No write permission'}), 403
+
+    try:
+        # Atomic write: write to temp file then rename to prevent partial writes
+        dir_name = os.path.dirname(resolved)
+        fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix='.tmp')
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                f.write(content)
+            # Preserve original file permissions
+            st = os.stat(resolved)
+            os.chmod(tmp_path, st.st_mode)
+            os.replace(tmp_path, resolved)
+        except Exception:
+            # Clean up temp file on failure
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
+        return jsonify({'success': True, 'size': len(content)})
+    except OSError:
+        return jsonify({'error': 'Failed to write file'}), 500
 
 
 # ============== Multi-User API ==============
@@ -2217,6 +2759,19 @@ def api_status():
         'uptime': uptime_str,
         'start_time': START_TIME.isoformat()
     })
+
+
+@app.route('/api/changelog')
+@login_required
+def api_changelog():
+    """Return changelog content"""
+    changelog_path = os.path.join(os.path.dirname(__file__), 'CHANGELOG.md')
+    try:
+        with open(changelog_path, 'r') as f:
+            content = f.read(100000)  # Cap at 100KB
+        return jsonify({'content': content})
+    except OSError:
+        return jsonify({'content': '# Changelog\n\nNo changelog available.'})
 
 
 @app.route('/api/state')

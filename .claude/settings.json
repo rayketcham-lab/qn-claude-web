@@ -1,0 +1,45 @@
+{
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "permissions": {
+    "allow": [
+      "Read",
+      "Edit",
+      "Bash(git *)",
+      "Bash(python *)",
+      "Bash(python3 *)",
+      "Bash(/usr/bin/python3 *)",
+      "Bash(pip *)",
+      "Bash(make *)",
+      "Bash(grep *)",
+      "Bash(find *)",
+      "Bash(cat *)",
+      "Bash(ls *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(wc *)",
+      "Bash(diff *)",
+      "Bash(curl *)",
+      "Bash(openssl *)",
+      "Bash(lsof *)",
+      "Bash(bash build-installer.sh*)",
+      "Bash(bash build-release.sh*)",
+      "Bash(scp *)",
+      "Bash(systemctl *)",
+      "Bash(ssh *)",
+      "Bash(ssh-keygen *)"
+    ],
+    "deny": [
+      "Bash(rm -rf /)",
+      "Bash(sudo rm *)",
+      "Bash(chmod 777 *)"
+    ]
+  },
+  "preferences": {
+    "agentMode": true,
+    "autoApprove": false,
+    "maxTokens": 16384,
+    "contextWindow": "200k"
+  }
+}

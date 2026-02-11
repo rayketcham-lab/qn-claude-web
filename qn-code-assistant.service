@@ -21,6 +21,7 @@ ExecStart=/usr/bin/python3 /opt/claude-web/app.py
 Restart=on-failure
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
+Environment=CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
 
 [Install]
 WantedBy=multi-user.target

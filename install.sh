@@ -25,14 +25,14 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-VERSION="1.3.2"
+VERSION="1.4.0"
 
 # SHA-256 hashes baked at build time
 declare -A FILE_HASHES=(
-    ["app.py"]="40fde8aed51d5517bcc99a7cee84a28f60d3169709d73a59b24ccdc8ce371c62"
-    ["static/js/app.js"]="4780978ce2d198a61382082a0501adff5a6d3a71a1ae8b1cd1bed2a3e26662e4"
-    ["static/css/style.css"]="d738e74c1418ead77d53a4510013f54c596660a7e0c23b66eb8f3eedb9495d61"
-    ["templates/index.html"]="22fe999a82865c8f9f176a0d32839d38ae5c3f914dc170948e1fbeaa3d74779d"
+    ["app.py"]="2c5cb01eb58b965864818f9d3826a41690504794de06bad13e7da328fdc32411"
+    ["static/js/app.js"]="b7787fede4c0d93afce0ede234f890ae16067a8606d95b5484b8cad5a201ce27"
+    ["static/css/style.css"]="93ff268a2622aeef7cb3363c40f2e85ba50571d8a9f12310baa196ee310acefe"
+    ["templates/index.html"]="702f3c1291ff72cbd889373a693d9dbed8ef493976e0cad5a57e72781f2dde6f"
     ["templates/login.html"]="5e77d824bad5af53a817ea7cf554992cb1d77e2050a41bd0add00880d5454aac"
     ["requirements.txt"]="4122e97cfa01caa3042e3d3b3e35a778a9e658c84a62a31177f19c041785c8d5"
     ["static/manifest.json"]="c2872d517d42875cd02f0dfdb5e9a8d79522097dd1b016450fc3afe59cace431"
@@ -41,11 +41,13 @@ declare -A FILE_HASHES=(
     ["apache-proxy.conf"]="5eab0edd895142e586693d410f82146cea4fd7dc0327c684cbf4b80c65fda248"
     ["maintenance.sh"]="69cb8b8938771c83b810d4736113bb1dfdb4a225d83858eb3e475a284ae0ecdc"
     ["start.sh"]="656167268feeec311c199e8811c754000d916d769c4af55d0b2c891d71f7f2fd"
-    ["qn-code-assistant.service"]="f64ac631919fcfee047da6fec38f430df194aa451c3cd641208884b34f5418bd"
+    ["qn-code-assistant.service"]="5fa58e9ecb1be00dad08fdd7cc15388790aa3526c7a5c02b12276789d16c67fe"
 )
 
 VENDOR_HASH="1ddb9ad9384df343937a83d208f5f3d7ff743170118973b0f6fcde65e20f3765"
 VENDOR_FILE_COUNT="329"
+ACE_HASH="13b2cedadef1e3fdadc06bdfdb2be31f26cc89f61a9017ab7c967ca17f54ec73"
+ACE_FILE_COUNT="30"
 
 NONINTERACTIVE=0
 
@@ -146,6 +148,30 @@ verify_integrity() {
             failed=1
         else
             log_info "Verified: vendor/ (${actual_count} files)"
+        fi
+        checked=$((checked + 1))
+    fi
+
+    # Verify static/js/ace/ directory
+    local ace_dir="${INSTALL_DIR}/static/js/ace"
+    if [[ ! -d "${ace_dir}" ]]; then
+        log_error "Missing directory: static/js/ace/"
+        tampered_files+=("static/js/ace/ (MISSING)")
+        failed=1
+    else
+        local ace_actual_count
+        ace_actual_count="$(find "${ace_dir}" -type f -not -path '*/__pycache__/*' | wc -l)"
+        local ace_actual_hash
+        ace_actual_hash="$(cd "${INSTALL_DIR}" && find static/js/ace/ -type f -not -path '*/__pycache__/*' -print0 | sort -z | xargs -0 $sha_cmd | $sha_cmd | awk '{print $1}')"
+
+        if [[ "${ace_actual_hash}" != "${ACE_HASH}" ]]; then
+            log_error "Hash mismatch: static/js/ace/ (${ace_actual_count} files)"
+            echo "         Expected: ${ACE_HASH}"
+            echo "         Actual:   ${ace_actual_hash}"
+            tampered_files+=("static/js/ace/")
+            failed=1
+        else
+            log_info "Verified: static/js/ace/ (${ace_actual_count} files)"
         fi
         checked=$((checked + 1))
     fi
