@@ -1,0 +1,91 @@
+# CI Pipeline — Unit Tests + Build Verification
+# Runs on every push/PR to main. Self-hosted runner with working directory /opt/claude-web.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+defaults:
+  run:
+    working-directory: /opt/claude-web
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1: Unit Tests
+  # Syncs test files from the checkout into the on-disk working directory
+  # (vendored deps already live at /opt/claude-web/vendor/) and runs the
+  # full unittest suite, asserting a minimum test count.
+  # ---------------------------------------------------------------------------
+  unit-tests:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Copy test files from the fresh checkout to the on-disk project so
+      # tests can import vendored dependencies that live on the runner.
+      - name: Sync test files to working directory
+        run: |
+          rsync -a --delete "${GITHUB_WORKSPACE}/tests/" /opt/claude-web/tests/
+
+      - name: Run unit tests
+        id: tests
+        run: |
+          # Capture output for both display and post-processing
+          /usr/bin/python3 -m unittest discover -s tests -p 'test_*.py' -v 2>&1 | tee /tmp/unittest_output.txt
+          # Preserve the unittest exit code (from PIPESTATUS)
+          exit ${PIPESTATUS[0]}
+
+      - name: Verify minimum test count
+        run: |
+          # Extract the summary line, e.g. "Ran 142 tests in 1.234s"
+          TEST_COUNT=$(grep -oP 'Ran \K[0-9]+' /tmp/unittest_output.txt || echo 0)
+          echo "Tests executed: ${TEST_COUNT}"
+          if [ "${TEST_COUNT}" -lt 100 ]; then
+            echo "::error::Test count ${TEST_COUNT} is below the required minimum of 100"
+            exit 1
+          fi
+          echo "Test count ${TEST_COUNT} meets minimum threshold (>=100)"
+
+  # ---------------------------------------------------------------------------
+  # Job 2: Build Verification
+  # Rebuilds the installer, verifies hash integrity, and (on main only)
+  # produces the self-extracting release artifact.
+  # ---------------------------------------------------------------------------
+  build-verify:
+    runs-on: self-hosted
+    needs: unit-tests
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build installer
+        run: bash /opt/claude-web/build-installer.sh
+
+      - name: Verify installer integrity
+        run: |
+          /opt/claude-web/install.sh --verify-only
+          echo "Installer integrity check passed"
+
+      # Release artifact is only built on pushes to main (not on PRs).
+      - name: Build release artifact
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          bash /opt/claude-web/build-release.sh 2>&1 | tee /tmp/build_release_output.txt
+
+      - name: Verify release artifact exists
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          # Locate the generated .sh installer file
+          RELEASE_FILE=$(ls -t /opt/claude-web/qn-code-assistant-v*.sh 2>/dev/null | head -1)
+          if [ -z "${RELEASE_FILE}" ]; then
+            echo "::error::Release artifact not found — expected qn-code-assistant-v*.sh"
+            exit 1
+          fi
+          echo "Release artifact verified: ${RELEASE_FILE}"

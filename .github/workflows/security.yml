@@ -1,0 +1,137 @@
+# Security Pipeline — Full Offensive Security Scans
+# On-demand via workflow_dispatch (with scan level choice) and weekly Sunday 2 AM UTC.
+
+name: Security
+
+on:
+  workflow_dispatch:
+    inputs:
+      scan_level:
+        description: "Scan depth"
+        required: true
+        type: choice
+        options:
+          - quick
+          - standard
+          - full
+        default: standard
+
+  schedule:
+    # Weekly scan: Sunday at 02:00 UTC
+    - cron: "0 2 * * 0"
+
+defaults:
+  run:
+    working-directory: /opt/claude-web
+
+env:
+  QN_TEST_URL: http://192.168.1.241:5001
+  KALI_HOST: kali
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1: Preflight Checks
+  # Verifies the application is reachable and Kali SSH connectivity works
+  # before any scans run.
+  # ---------------------------------------------------------------------------
+  preflight:
+    runs-on: self-hosted
+
+    steps:
+      - name: Verify application is reachable
+        run: |
+          HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' "${QN_TEST_URL}/api/status")
+          echo "HTTP status: ${HTTP_CODE}"
+          if [ "${HTTP_CODE}" = "000" ]; then
+            echo "::error::Application unreachable at ${QN_TEST_URL} (HTTP 000 — connection refused)"
+            exit 1
+          fi
+          echo "Application is reachable (HTTP ${HTTP_CODE})"
+
+      - name: Verify Kali SSH connectivity
+        run: |
+          ssh -o ConnectTimeout=5 -o BatchMode=yes "${KALI_HOST}" "echo ok"
+          echo "Kali host SSH connection verified"
+
+  # ---------------------------------------------------------------------------
+  # Job 2: Integration Tests
+  # Runs the integration test suite against the live application.
+  # ---------------------------------------------------------------------------
+  integration-tests:
+    runs-on: self-hosted
+    needs: preflight
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Sync test files to working directory
+        run: |
+          rsync -a --delete "${GITHUB_WORKSPACE}/tests/" /opt/claude-web/tests/
+
+      - name: Run integration tests
+        run: |
+          /usr/bin/python3 -m unittest tests.test_integration -v
+
+  # ---------------------------------------------------------------------------
+  # Job 3: Penetration Tests
+  # Runs the Python-based pentest suite and uploads results as artifacts.
+  # ---------------------------------------------------------------------------
+  pentest:
+    runs-on: self-hosted
+    needs: preflight
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Sync test files to working directory
+        run: |
+          rsync -a --delete "${GITHUB_WORKSPACE}/tests/" /opt/claude-web/tests/
+
+      - name: Create results directory
+        run: mkdir -p /opt/claude-web/tests/security/results
+
+      - name: Run penetration tests
+        run: |
+          /usr/bin/python3 -m unittest tests.security.pentest -v
+
+      - name: Upload pentest results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pentest-results
+          path: /opt/claude-web/tests/security/results/
+          retention-days: 30
+
+  # ---------------------------------------------------------------------------
+  # Job 4: Kali External Scan
+  # Invokes the Kali-based scanning script against the live target and
+  # uploads results as artifacts.
+  # ---------------------------------------------------------------------------
+  kali-scan:
+    runs-on: self-hosted
+    needs: preflight
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Sync test files to working directory
+        run: |
+          rsync -a --delete "${GITHUB_WORKSPACE}/tests/" /opt/claude-web/tests/
+
+      - name: Run Kali scan
+        run: |
+          bash /opt/claude-web/tests/security/kali_scan.sh \
+            --target "${QN_TEST_URL}" \
+            --level "${{ inputs.scan_level || 'standard' }}" \
+            --output /opt/claude-web/tests/security/results/kali/
+
+      - name: Upload Kali scan results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kali-scan-results
+          path: /opt/claude-web/tests/security/results/kali/
+          retention-days: 30
