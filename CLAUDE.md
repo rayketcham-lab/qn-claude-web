@@ -154,6 +154,16 @@ The `vendor/` directory contains 14 vendored Python packages (329 files). This i
 - Autonomous SSH key generation and exchange via sshpass
 - Imports from `~/.ssh/config`
 
+### Kali Linux VM (Security & CI Testing)
+- **Connect**: `ssh kali "command"`
+- **IP**: 192.168.1.145 (bridged on br0, same LAN as ubuntu3)
+- **User**: kali
+- **Tools**: nmap, nikto, sqlmap, hydra, zaproxy, full Kali toolset
+- **Example**: `ssh kali "nmap -sV 192.168.1.241"` (scan this app's host)
+- Any agent spawned from this host inherits the SSH config and key — `ssh kali "whatever"` just works
+- Used by: SecOps (offensive testing), DevOps (CI security scans via `security.yml` workflow)
+- Scan orchestrator: `tests/security/kali_scan.sh` (runs nmap/nikto/ZAP/sqlmap at 3 severity levels)
+
 ---
 
 ## Agent Domain Notes
@@ -166,7 +176,7 @@ The `vendor/` directory contains 14 vendored Python packages (329 files). This i
 - **WebSocket security**: SocketIO connections handle terminal I/O — verify origin checking and message size limits.
 
 ### DevOps — Project-Specific Focus Areas
-- **No CI/CD pipeline**: Build/release is manual shell scripts, not automated CI. Focus on installer integrity (SHA-256 hashes match), self-extracting archive correctness, and systemd service reliability.
+- **CI/CD pipeline**: GitHub Actions — `ci.yml` (unit tests + build on push/PR), `security.yml` (offensive scans, manual + weekly cron). Self-hosted runner on ubuntu3 at `/opt/actions-runner-qnca/`.
 - **Vendor hash integrity**: Hash computation uses relative paths (`cd` to project dir, `find vendor/`). Absolute paths break cross-directory installs. Verify after any vendor changes.
 - **Systemd service**: `qn-code-assistant.service` — ensure proper restart policies, user isolation, and environment variable handling.
 - **Release artifacts**: Self-extracting `.sh` installers (base64 ZIP). Verify extraction, hash validation, and interactive setup work correctly.

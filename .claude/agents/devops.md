@@ -72,6 +72,14 @@ You are **DevOps** — the build, deploy, and infrastructure authority. You ensu
 - **Backup**: Automated, tested, documented recovery procedure
 - **Scaling**: Horizontal scaling path identified, load tested
 
+## Kali Linux VM (CI Security Scans)
+- **Connect**: `ssh kali "command"` — SSH config and key are inherited, no extra setup needed
+- **IP**: 192.168.1.145 (bridged on br0, same LAN as ubuntu3)
+- **User**: kali
+- **Role in CI**: `security.yml` workflow dispatches scans to Kali via SSH
+- **Scan orchestrator**: `tests/security/kali_scan.sh` — nmap/nikto/ZAP/sqlmap, 3 severity levels
+- **Example**: `ssh kali "bash -s" < tests/security/kali_scan.sh` (pipe script to Kali)
+
 ## Collaboration Notes
 - Coordinate with **Architect** on infrastructure-impacting design decisions
 - Enforce **SecOps** requirements in pipeline (scanning gates, secret detection)

@@ -7,6 +7,7 @@ A full-featured web frontend for Claude Code CLI
 import os
 import sys
 import json
+import logging
 import pty
 import re
 import select
@@ -33,6 +34,14 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins=None, async_mode='threading')
+
+# Logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger('qnca')
 
 # Version info
 VERSION = "1.4.0"
@@ -117,7 +126,7 @@ def load_config():
                 file_config = json.load(f)
             defaults.update(file_config)
         except Exception as e:
-            print(f"[Config] Error loading config: {e}")
+            logger.error("Config load error: %s", e)
 
     # Type-validate critical config values (coerce or reset to defaults)
     for key, expected_type, fallback in [
@@ -153,7 +162,7 @@ def save_config(config_dict):
         with open(CONFIG_FILE, 'w') as f:
             json.dump(to_save, f, indent=2)
     except Exception as e:
-        print(f"[Config] Error saving config: {e}")
+        logger.error("Config save error: %s", e)
 
 CONFIG = load_config()
 CONFIG['sessions_dir'] = Path(__file__).parent / 'sessions'
@@ -222,7 +231,7 @@ def save_usage(usage):
         with open(USAGE_FILE, 'w') as f:
             json.dump(usage, f, indent=2)
     except Exception as e:
-        print(f"[Usage] Error saving: {e}")
+        logger.error("Usage save error: %s", e)
 
 def get_week_key():
     """Get ISO week key like '2026-W06'"""
@@ -268,7 +277,7 @@ def cleanup_old_processes():
     # Clean up terminals
     for tid, term in list(active_terminals.items()):
         if now - term.get('started', now) > timeout:
-            print(f"[Watchdog] Killing stale terminal {tid}")
+            logger.info("Killing stale terminal %s", tid)
             try:
                 os.kill(term['pid'], signal.SIGTERM)
             except OSError:
@@ -278,7 +287,7 @@ def cleanup_old_processes():
     # Clean up chat processes
     for sid, chat in list(active_chat_processes.items()):
         if now - chat.get('started', now) > timeout:
-            print(f"[Watchdog] Killing stale chat process {sid}")
+            logger.info("Killing stale chat process %s", sid)
             try:
                 chat['process'].terminate()
             except OSError:
@@ -296,7 +305,7 @@ def watchdog_thread():
             # Clean up expired rate limit entries
             _clean_rate_limits()
         except Exception as e:
-            print(f"[Watchdog] Error: {e}")
+            logger.error("Watchdog error: %s", e)
         time.sleep(60)  # Check every minute
 
 
@@ -306,14 +315,14 @@ def backup_all_sessions():
         try:
             save_session(session_id)
         except Exception as e:
-            print(f"[Backup] Error saving session {session_id}: {e}")
+            logger.error("Backup error saving session %s: %s", session_id, e)
 
 
 def shutdown_cleanup():
     """Clean up all processes on shutdown"""
     global watchdog_running
     watchdog_running = False
-    print("[Shutdown] Cleaning up processes...")
+    logger.info("Cleaning up processes...")
 
     # Save all sessions
     backup_all_sessions()
@@ -332,7 +341,7 @@ def shutdown_cleanup():
         except OSError:
             pass
 
-    print("[Shutdown] Cleanup complete")
+    logger.info("Cleanup complete")
 
 
 # Register cleanup on exit
@@ -394,9 +403,9 @@ def get_projects(root_path=None):
                     }
                 })
     except PermissionError as e:
-        print(f"Permission error reading {root}: {e}")
+        logger.warning("Permission error reading %s: %s", root, e)
     except Exception as e:
-        print(f"Error reading {root}: {e}")
+        logger.error("Error reading %s: %s", root, e)
 
     # Sort: current first, then claude projects, then git, then alphabetical
     projects.sort(key=lambda p: (p['type'] != 'current', not p['is_claude'], not p['is_git'], p['name'].lower()))
@@ -753,7 +762,7 @@ def build_claude_command(project_path, flags, prompt=None, remote_host=None):
             if os.path.isfile(expanded_key):
                 ssh_cmd.extend(['-i', expanded_key])
             else:
-                print(f"[SSH] Warning: key file not found: {expanded_key}, falling back to default keys")
+                logger.warning("SSH key file not found: %s, falling back to default keys", expanded_key)
         # Allocate PTY for interactive terminal sessions
         if not prompt:
             ssh_cmd.append('-t')
@@ -1353,7 +1362,7 @@ def api_remote_projects(host_id):
             if os.path.isfile(key_path):
                 ssh_cmd.extend(['-i', key_path])
             else:
-                print(f"[SSH] Warning: key file not found: {key_path}")
+                logger.warning("SSH key file not found: %s", key_path)
         ssh_cmd.append(f"{remote_host['username']}@{remote_host['hostname']}")
         remote_script = f'''python3 -c "
 import os, json
@@ -1566,9 +1575,9 @@ def handle_terminal_create(data):
             active_agents = CONFIG.get('active_agents', [])
             custom_agents = CONFIG.get('custom_agents', [])
             deployed = deploy_agents(project_path, active_agents, custom_agents)
-            print(f"[Agents] Deployed {len(deployed)} agents to {project_path}")
+            logger.info("Deployed %d agents to %s", len(deployed), project_path)
         except Exception as e:
-            print(f"[Agents] Deploy failed: {e}")
+            logger.error("Agent deploy failed: %s", e)
 
     # Build command and environment (SSH-wrapped if remote)
     cmd = build_claude_command(project_path, flags, remote_host=remote_host)
@@ -1782,7 +1791,7 @@ def handle_chat_message(data):
                             'output_tokens': output_tokens
                         })
                     except Exception as ue:
-                        print(f"[Usage] Parse error: {ue}")
+                        logger.warning("Usage parse error: %s", ue)
 
             process.wait()
 
@@ -2816,14 +2825,14 @@ def ensure_ssl_certs():
         return str(cert_path), str(key_path)
 
     cert_dir.mkdir(exist_ok=True)
-    print("[SSL] Generating self-signed certificate...")
+    logger.info("Generating self-signed certificate...")
     subprocess.run([
         'openssl', 'req', '-x509', '-newkey', 'rsa:2048',
         '-keyout', str(key_path), '-out', str(cert_path),
         '-days', '365', '-nodes',
         '-subj', '/CN=qn-code-assistant/O=QN Code Assistant'
     ], check=True, capture_output=True)
-    print(f"[SSL] Certificate generated: {cert_path}")
+    logger.info("Certificate generated: %s", cert_path)
 
     return str(cert_path), str(key_path)
 
@@ -2834,7 +2843,7 @@ if __name__ == '__main__':
     # Start watchdog thread
     watchdog = threading.Thread(target=watchdog_thread, daemon=True)
     watchdog.start()
-    print("[Watchdog] Started process monitor")
+    logger.info("Started process monitor")
 
     # Check Claude CLI version at startup
     cli_version = get_claude_version()
@@ -2848,7 +2857,7 @@ if __name__ == '__main__':
         key = CONFIG.get('ssl_key', '')
         if cert and key:
             ssl_context = (cert, key)
-            print(f"[SSL] Using custom certificates: {cert}")
+            logger.info("Using custom SSL certificates: %s", cert)
         else:
             cert, key = ensure_ssl_certs()
             ssl_context = (cert, key)
@@ -2856,14 +2865,14 @@ if __name__ == '__main__':
 
     auth_status = 'ENABLED' if CONFIG.get('auth', {}).get('enabled') else 'DISABLED'
 
-    print("=" * 50)
-    print(f"QN Code Assistant v{VERSION}")
-    print("=" * 50)
-    print(f"Claude CLI: {cli_version or 'NOT FOUND'}")
-    print(f"Auth: {auth_status}")
-    print(f"Starting server on {protocol}://0.0.0.0:{port}")
-    print(f"Projects root: {CONFIG['projects_root']}")
-    print("=" * 50)
+    logger.info("=" * 50)
+    logger.info("QN Code Assistant v%s", VERSION)
+    logger.info("=" * 50)
+    logger.info("Claude CLI: %s", cli_version or 'NOT FOUND')
+    logger.info("Auth: %s", auth_status)
+    logger.info("Starting server on %s://0.0.0.0:%s", protocol, port)
+    logger.info("Projects root: %s", CONFIG['projects_root'])
+    logger.info("=" * 50)
 
     # Override Werkzeug server version to prevent information leakage
     from werkzeug.serving import WSGIRequestHandler
@@ -2871,6 +2880,6 @@ if __name__ == '__main__':
     WSGIRequestHandler.sys_version = ''
 
     socketio.run(app, host='0.0.0.0', port=port,
-                 debug=CONFIG.get('debug', True),
+                 debug=CONFIG.get('debug', False),
                  allow_unsafe_werkzeug=True,
                  ssl_context=ssl_context)

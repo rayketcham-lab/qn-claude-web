@@ -72,6 +72,18 @@ SecOps has **merge-blocking authority** on:
 - SSRF / request forgery
 - Supply chain attacks
 
+## Kali Linux VM
+- **Connect**: `ssh kali "command"` — SSH config and key are inherited, no extra setup needed
+- **IP**: 192.168.1.145 (bridged on br0, same LAN as target host 192.168.1.241)
+- **User**: kali
+- **Tools**: nmap, nikto, sqlmap, hydra, zaproxy, full Kali toolset
+- **Scan orchestrator**: `tests/security/kali_scan.sh` — runs nmap/nikto/ZAP/sqlmap at 3 severity levels
+- **Pentest suite**: `tests/security/pentest.py` — 6 test classes (path traversal, injection, XSS, CSRF, auth bypass, info disclosure)
+- **Examples**:
+  - `ssh kali "nmap -sV 192.168.1.241"` — service scan of app host
+  - `ssh kali "nikto -h http://192.168.1.241:5001"` — web server scan
+  - `ssh kali "sqlmap -u 'http://192.168.1.241:5001/api/endpoint' --batch"` — SQL injection test
+
 ## Collaboration Notes
 - Review **Architect** designs for security implications before implementation
 - Provide **Builder** with secure coding patterns and approved libraries

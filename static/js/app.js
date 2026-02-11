@@ -162,9 +162,7 @@ class ClaudeCodeWeb {
                 header.innerHTML = `QN Code Assistant <a href="#" id="version-link" class="version-link">v${this._escapeHtml(status.version)}</a>`;
             }
 
-            if (status.claude_version) {
-                console.log(`Claude CLI version: ${status.claude_version}`);
-            } else {
+            if (!status.claude_version) {
                 console.warn('Claude CLI not found or version check failed');
             }
         } catch (error) {
@@ -611,7 +609,6 @@ class ClaudeCodeWeb {
         this._wasConnected = false;
 
         this.socket.on('connect', () => {
-            console.log('Connected to server');
             this.elements.connectionStatus.classList.add('connected');
             document.getElementById('connection-banner').classList.remove('visible');
 
@@ -623,15 +620,12 @@ class ClaudeCodeWeb {
         });
 
         this.socket.on('disconnect', (reason) => {
-            console.log('Disconnected from server:', reason);
             this.elements.connectionStatus.classList.remove('connected');
             document.getElementById('connection-banner').classList.add('visible');
             this.showToast('Connection lost - reconnecting...', 'error', 6000);
         });
 
-        this.socket.on('reconnect_attempt', (attempt) => {
-            console.log(`Reconnection attempt ${attempt}`);
-        });
+        this.socket.on('reconnect_attempt', () => {});
 
         // Terminal events
         this.socket.on('terminal_created', (data) => {
