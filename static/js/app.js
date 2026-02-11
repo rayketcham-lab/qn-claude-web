@@ -1288,6 +1288,13 @@ class ClaudeCodeWeb {
 
         terminal.open(container);
 
+        // Let browser handle copy/paste shortcuts instead of sending to PTY
+        terminal.attachCustomKeyEventHandler((e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'v') return false;
+            if ((e.ctrlKey || e.metaKey) && e.key === 'c' && terminal.hasSelection()) return false;
+            return true;
+        });
+
         // Handle input
         terminal.onData(data => {
             if (this.terminals[terminalId] && !this.terminals[terminalId].closed) {
