@@ -2,6 +2,15 @@
 
 All notable changes to QN Code Assistant.
 
+## [1.4.1] - 2026-02-12
+
+### Fixed
+- **Agent selection toggle broken** - Clicking agent cards to deselect/select did not update visual state. Root cause: full `innerHTML` replacement during click event processing caused rendering issues. Fix switches to direct class toggle on the clicked card element.
+- **Agent selection indicator** - Active agent cards now show a checkmark (&#10003;) badge for unambiguous visual feedback
+
+### Changed
+- Version bumped to 1.4.1
+
 ## [1.4.0] - 2026-02-10
 
 ### Added

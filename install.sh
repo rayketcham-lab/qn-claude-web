@@ -25,13 +25,13 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-VERSION="1.4.0"
+VERSION="1.4.1"
 
 # SHA-256 hashes baked at build time
 declare -A FILE_HASHES=(
-    ["app.py"]="2c5cb01eb58b965864818f9d3826a41690504794de06bad13e7da328fdc32411"
-    ["static/js/app.js"]="b7787fede4c0d93afce0ede234f890ae16067a8606d95b5484b8cad5a201ce27"
-    ["static/css/style.css"]="93ff268a2622aeef7cb3363c40f2e85ba50571d8a9f12310baa196ee310acefe"
+    ["app.py"]="c8a2e1224e3038a67376fe926b7c0f273f5b0b5cfb6554749755cc2d28ab74f5"
+    ["static/js/app.js"]="7decc454bfab840131fcb42f073ea92ad9f04782be92c80bfde1dbcabfb89ede"
+    ["static/css/style.css"]="f8a708b49a25593f209b530d6c72522477036cf011d042a37e33941f9dd111c9"
     ["templates/index.html"]="702f3c1291ff72cbd889373a693d9dbed8ef493976e0cad5a57e72781f2dde6f"
     ["templates/login.html"]="5e77d824bad5af53a817ea7cf554992cb1d77e2050a41bd0add00880d5454aac"
     ["requirements.txt"]="4122e97cfa01caa3042e3d3b3e35a778a9e658c84a62a31177f19c041785c8d5"

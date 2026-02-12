@@ -893,7 +893,8 @@ class ClaudeCodeWeb {
             this.renderAgentModalGrid();
         });
 
-        // Agents modal grid (delegated)
+        // Agents modal grid (delegated) — toggle active class directly
+        // to avoid innerHTML replacement during click event processing
         document.getElementById('agents-modal-grid').addEventListener('click', (e) => {
             const card = e.target.closest('.agent-card');
             if (!card || card.classList.contains('locked')) return;
@@ -902,13 +903,14 @@ class ClaudeCodeWeb {
             const idx = this._activeAgents.indexOf(agentId);
             if (idx >= 0) {
                 this._activeAgents.splice(idx, 1);
+                card.classList.remove('active');
             } else if (this._activeAgents.length < 5) {
                 this._activeAgents.push(agentId);
+                card.classList.add('active');
             } else {
                 this.showToast('Maximum 5 agents allowed (+ Sentinel)', 'warning');
                 return;
             }
-            this.renderAgentModalGrid();
             this.updateAgentCount();
         });
 

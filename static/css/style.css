@@ -2483,6 +2483,7 @@ html, body {
 
 /* Agent cards */
 .agent-card {
+    position: relative;
     background: var(--bg-tertiary);
     border: 2px solid var(--border-color);
     border-radius: 8px;
@@ -2502,6 +2503,17 @@ html, body {
 .agent-card.active {
     border-color: var(--accent);
     background: rgba(233, 69, 96, 0.12);
+}
+
+.agent-card.active::after {
+    content: '\2713';
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    color: var(--accent);
+    font-size: 1rem;
+    font-weight: bold;
+    line-height: 1;
 }
 
 .agent-card.locked {
