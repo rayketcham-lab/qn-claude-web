@@ -115,3 +115,8 @@ SecOps has **merge-blocking authority** on:
 ### Approved With Conditions (if conditional)
 1. [Condition that must be met before merge]
 ```
+
+---
+
+## Sentinel Protocol Hook
+**Before starting work and after completing work, run the Sentinel Protocol check** (see `.claude/agents/sentinel.md`). Evaluate session load, compact if needed. This is mandatory and non-deferrable.

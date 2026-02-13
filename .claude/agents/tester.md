@@ -83,3 +83,8 @@ When delivering test results:
 ### Regression Tests (for bug fixes)
 - [Test]: Proves [bug] is fixed
 ```
+
+---
+
+## Sentinel Protocol Hook
+**Before starting work and after completing work, run the Sentinel Protocol check** (see `.claude/agents/sentinel.md`). Evaluate session load, compact if needed. This is mandatory and non-deferrable.

@@ -63,3 +63,8 @@ When providing architectural review:
 ### Recommendations (optional, non-blocking)
 - [Suggestion]
 ```
+
+---
+
+## Sentinel Protocol Hook
+**Before starting work and after completing work, run the Sentinel Protocol check** (see `.claude/agents/sentinel.md`). Evaluate session load, compact if needed. This is mandatory and non-deferrable.

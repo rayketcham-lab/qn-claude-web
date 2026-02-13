@@ -107,3 +107,8 @@ You are **DevOps** — the build, deploy, and infrastructure authority. You ensu
 ### Action Items
 1. [Task] — Owner: [Agent]
 ```
+
+---
+
+## Sentinel Protocol Hook
+**Before starting work and after completing work, run the Sentinel Protocol check** (see `.claude/agents/sentinel.md`). Evaluate session load, compact if needed. This is mandatory and non-deferrable.
