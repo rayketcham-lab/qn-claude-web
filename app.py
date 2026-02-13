@@ -264,7 +264,8 @@ TMUX_PREFIX = 'qn-'
 TMUX_NAME_RE = re.compile(r'^qn-[a-f0-9]{8}\Z')
 TMUX_BIN = '/usr/bin/tmux'
 AGENT_LOG_DIR = os.path.expanduser('~/.claude/agent-logs')
-os.makedirs(AGENT_LOG_DIR, exist_ok=True)
+os.makedirs(AGENT_LOG_DIR, mode=0o700, exist_ok=True)
+os.chmod(AGENT_LOG_DIR, 0o700)
 
 # Active chat processes: {session_id: {'process': Popen, 'started': datetime}}
 active_chat_processes = {}
@@ -337,6 +338,27 @@ def _find_terminal_by_tmux(tmux_name):
     for tid, term in active_terminals.items():
         if term.get('tmux_session') == tmux_name:
             return tid
+    return None
+
+
+def _tmux_set_owner(tmux_name, username):
+    """Store the owning username as a tmux environment variable."""
+    if username:
+        subprocess.run(
+            [TMUX_BIN, 'set-environment', '-t', tmux_name, 'QN_OWNER', username],
+            capture_output=True,
+        )
+
+
+def _tmux_get_owner(tmux_name):
+    """Read the owning username from a tmux session's environment."""
+    result = subprocess.run(
+        [TMUX_BIN, 'show-environment', '-t', tmux_name, 'QN_OWNER'],
+        capture_output=True, text=True,
+    )
+    # Output format: "QN_OWNER=username" or "-QN_OWNER" (if unset)
+    if result.returncode == 0 and '=' in result.stdout:
+        return result.stdout.strip().split('=', 1)[1]
     return None
 
 
@@ -1764,7 +1786,12 @@ def handle_terminal_create(data):
 
     # Set up pipe-pane for watchdog logging
     _tmux_setup_logging(tmux_name, log_file)
-    logger.info("Created tmux session %s for terminal %s (project: %s)", tmux_name, terminal_id, project_path)
+
+    # Bind this tmux session to the creating user
+    owner = session.get('username', '')
+    _tmux_set_owner(tmux_name, owner)
+
+    logger.info("Created tmux session %s for terminal %s (project: %s, owner: %s)", tmux_name, terminal_id, project_path, owner or 'anonymous')
 
     # Now attach to the tmux session via PTY (this is the WebSocket I/O layer)
     _attach_to_tmux(terminal_id, tmux_name, project_path, flags, remote_host_id, log_file, request.sid)
@@ -1943,6 +1970,13 @@ def handle_terminal_reconnect(data):
         emit('terminal_error', {'error': f'tmux session {tmux_name} no longer exists'})
         return
 
+    # Verify ownership — users can only reconnect to their own sessions
+    owner = _tmux_get_owner(tmux_name)
+    current_user = session.get('username', '')
+    if owner and current_user and owner != current_user:
+        emit('terminal_error', {'error': f'Session {tmux_name} belongs to another user'})
+        return
+
     # Hold lock across check-and-attach to prevent double-reconnect race
     with active_terminals_lock:
         # Check if already attached by another terminal
@@ -1973,6 +2007,13 @@ def handle_terminal_kill_tmux(data):
         emit('terminal_error', {'error': 'Invalid tmux session name'})
         return
 
+    # Verify ownership — users can only kill their own sessions
+    owner = _tmux_get_owner(tmux_name)
+    current_user = session.get('username', '')
+    if owner and current_user and owner != current_user:
+        emit('terminal_error', {'error': f'Session {tmux_name} belongs to another user'})
+        return
+
     # Don't kill if currently attached
     with active_terminals_lock:
         existing = _find_terminal_by_tmux(tmux_name)
@@ -1982,7 +2023,7 @@ def handle_terminal_kill_tmux(data):
 
     _tmux_kill_session(tmux_name)
     emit('tmux_session_killed', {'tmux_session': tmux_name})
-    logger.info("Killed detached tmux session %s", tmux_name)
+    logger.info("Killed detached tmux session %s (by %s)", tmux_name, current_user or 'anonymous')
 
 
 @socketio.on('chat_message')
@@ -2803,6 +2844,7 @@ def api_tmux_sessions():
             'name': s['name'],
             'created': datetime.fromtimestamp(s['created']).isoformat() if s['created'] else None,
             'attached': s['name'] in attached_tmux,
+            'owner': _tmux_get_owner(s['name']),
         })
     return jsonify({'sessions': result})
 

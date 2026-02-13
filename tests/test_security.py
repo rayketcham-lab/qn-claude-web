@@ -46,6 +46,8 @@ _tmux_list_sessions = app_module._tmux_list_sessions
 _tmux_session_exists = app_module._tmux_session_exists
 _reap_tmux_sessions = app_module._reap_tmux_sessions
 _pid_alive = app_module._pid_alive
+_tmux_set_owner = app_module._tmux_set_owner
+_tmux_get_owner = app_module._tmux_get_owner
 
 
 # ===================================================================
@@ -921,6 +923,57 @@ class TestReapTmuxSessions(unittest.TestCase):
                 CONFIG.pop('tmux_reap_hours', None)
             else:
                 CONFIG['tmux_reap_hours'] = original
+
+
+# ===================================================================
+# 10. _tmux_set_owner() / _tmux_get_owner() tests
+# ===================================================================
+class TestTmuxOwnership(unittest.TestCase):
+    """Test tmux session ownership helpers with mocked subprocess."""
+
+    @patch('app.subprocess.run')
+    def test_set_owner_calls_tmux(self, mock_run):
+        _tmux_set_owner('qn-abcdef01', 'alice')
+        mock_run.assert_called_once()
+        args = mock_run.call_args[0][0]
+        self.assertIn('set-environment', args)
+        self.assertIn('QN_OWNER', args)
+        self.assertIn('alice', args)
+
+    @patch('app.subprocess.run')
+    def test_set_owner_skips_empty_username(self, mock_run):
+        _tmux_set_owner('qn-abcdef01', '')
+        mock_run.assert_not_called()
+
+    @patch('app.subprocess.run')
+    def test_get_owner_parses_output(self, mock_run):
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout='QN_OWNER=bob\n', stderr=''
+        )
+        self.assertEqual(_tmux_get_owner('qn-abcdef01'), 'bob')
+
+    @patch('app.subprocess.run')
+    def test_get_owner_returns_none_when_unset(self, mock_run):
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=1, stdout='', stderr=''
+        )
+        self.assertIsNone(_tmux_get_owner('qn-abcdef01'))
+
+    @patch('app.subprocess.run')
+    def test_get_owner_handles_dash_prefix(self, mock_run):
+        """tmux outputs '-QN_OWNER' when the variable has been removed."""
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout='-QN_OWNER\n', stderr=''
+        )
+        self.assertIsNone(_tmux_get_owner('qn-abcdef01'))
+
+    @patch('app.subprocess.run')
+    def test_get_owner_handles_equals_in_username(self, mock_run):
+        """Edge case: username containing '=' should be preserved."""
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout='QN_OWNER=user=name\n', stderr=''
+        )
+        self.assertEqual(_tmux_get_owner('qn-abcdef01'), 'user=name')
 
 
 # ===================================================================

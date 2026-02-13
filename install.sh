@@ -29,7 +29,7 @@ VERSION="1.4.1"
 
 # SHA-256 hashes baked at build time
 declare -A FILE_HASHES=(
-    ["app.py"]="b35ae9853e641c14f4946aba0d75fc11326dfed5bbce31b2df2addba7579f603"
+    ["app.py"]="f2387daf88c21edc1fa7bdbe13c169befe6a7454edd348f948a12be602b6b569"
     ["static/js/app.js"]="063d6c2338a39240bbdad8dbd4ea39174cd5ede8ce776c312d9d9151378e96b2"
     ["static/css/style.css"]="d77b84dbfb930c37ef5f392fefd81c9f7df52f6587b22e2139c889dd15a10f8a"
     ["templates/index.html"]="702f3c1291ff72cbd889373a693d9dbed8ef493976e0cad5a57e72781f2dde6f"
@@ -40,7 +40,7 @@ declare -A FILE_HASHES=(
     ["static/icon.svg"]="62f098e754f05bc584ef68b681141961ed172a072bf10ab9e494356df27ce034"
     ["apache-proxy.conf"]="5eab0edd895142e586693d410f82146cea4fd7dc0327c684cbf4b80c65fda248"
     ["maintenance.sh"]="69cb8b8938771c83b810d4736113bb1dfdb4a225d83858eb3e475a284ae0ecdc"
-    ["start.sh"]="656167268feeec311c199e8811c754000d916d769c4af55d0b2c891d71f7f2fd"
+    ["start.sh"]="3c321fffe379a6ce9d1d3b782542e0c69e2348874a7fb5e26826d2f25b5306bc"
     ["qn-code-assistant.service"]="722ebb970d9c40ba4ea95f1424424f0041c4518e774ba8c027d008b6a725e6d4"
 )
 

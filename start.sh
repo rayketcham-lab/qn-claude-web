@@ -36,6 +36,12 @@ if ! command -v claude &> /dev/null; then
     echo -e "${YELLOW}Make sure Claude Code is installed and accessible.${NC}"
 fi
 
+# Check for tmux (needed for persistent terminal sessions)
+if ! command -v tmux &> /dev/null; then
+    echo -e "${YELLOW}Warning: tmux is not installed — persistent terminal sessions will not work.${NC}"
+    echo -e "${YELLOW}Install with: sudo apt install tmux${NC}"
+fi
+
 # Start the server
 echo ""
 echo -e "${GREEN}Starting server...${NC}"
