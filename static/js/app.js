@@ -774,20 +774,6 @@ class ClaudeCodeWeb {
             document.getElementById('print-prompt-wrap').classList.toggle('hidden', !e.target.checked);
         });
 
-        document.getElementById('launch-options-toggle').addEventListener('click', () => {
-            const body = document.getElementById('launch-options-body');
-            const arrow = document.querySelector('#launch-options-toggle .toggle-arrow');
-            body.classList.toggle('hidden');
-            arrow.textContent = body.classList.contains('hidden') ? '\u25B6' : '\u25BC';
-        });
-
-        document.getElementById('advanced-options-toggle').addEventListener('click', () => {
-            const panel = document.getElementById('advanced-options');
-            const arrow = document.querySelector('#advanced-options-toggle .toggle-arrow');
-            panel.classList.toggle('hidden');
-            arrow.textContent = panel.classList.contains('hidden') ? '\u25B6' : '\u25BC';
-        });
-
         // Terminal buttons
         document.getElementById('btn-new-terminal').addEventListener('click', () => {
             this.createTerminal();
@@ -1977,6 +1963,10 @@ class ClaudeCodeWeb {
                     case '3':
                         e.preventDefault();
                         this._switchView('files');
+                        return;
+                    case '4':
+                        e.preventDefault();
+                        this._switchView('options');
                         return;
                     case 't':
                         e.preventDefault();

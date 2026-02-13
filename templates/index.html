@@ -87,125 +87,6 @@
                 </div>
             </div>
 
-            <!-- Launch Options -->
-            <div id="launch-options">
-                <h3 id="launch-options-toggle" class="launch-options-toggle">Launch Options <span class="toggle-arrow">&#9654;</span></h3>
-                <div id="launch-options-body" class="hidden">
-                <label class="flag-option">
-                    <input type="checkbox" id="flag-resume">
-                    <span>-r</span> Resume last conversation
-                    <span class="tip" data-tip="Resumes the most recent conversation exactly where it left off, restoring the full context. Claude sees everything from the previous session.">?</span>
-                </label>
-                <label class="flag-option">
-                    <input type="checkbox" id="flag-continue">
-                    <span>-c</span> Continue conversation
-                    <span class="tip" data-tip="Starts a new conversation but pre-loads a summary of the most recent session. Useful when the previous context is too large or you want a fresh start with some history.">?</span>
-                </label>
-                <label class="flag-option">
-                    <input type="checkbox" id="flag-verbose">
-                    <span>--verbose</span> Verbose output
-                    <span class="tip" data-tip="Shows detailed output including tool calls, file reads, and internal reasoning steps.">?</span>
-                </label>
-                <label class="flag-option">
-                    <input type="checkbox" id="flag-print-mode">
-                    <span>-p</span> Print mode (one-shot)
-                    <span class="tip" data-tip="Runs a single prompt and prints the response to stdout, then exits. No interactive session. Great for scripting or quick queries.">?</span>
-                </label>
-                <div id="print-prompt-wrap" class="sub-field hidden">
-                    <textarea id="flag-print-prompt" rows="2" maxlength="10000" placeholder="Enter prompt for one-shot query..."></textarea>
-                </div>
-                <div class="launch-select">
-                    <label>Permissions: <span class="tip" data-tip="Controls what Claude can do without asking permission. Default: prompts for each action. Accept Edits: auto-approves file reads and writes but asks for shell commands. Plan: Claude can only read and suggest — no writes or commands. Don't Ask: auto-approves everything except destructive operations. Bypass All: no permission checks at all (use with caution).">?</span></label>
-                    <select id="flag-permission-mode">
-                        <option value="">Default</option>
-                        <option value="acceptEdits">Accept Edits</option>
-                        <option value="plan">Plan Only</option>
-                        <option value="dontAsk">Don't Ask</option>
-                        <option value="bypassPermissions">Bypass All</option>
-                    </select>
-                </div>
-                <div class="launch-select">
-                    <label>Model: <span class="tip" data-tip="Which Claude model to use. Opus is the most capable but slowest. Sonnet is a good balance. Haiku is the fastest and cheapest. Opus Plan uses Opus for planning and Sonnet for execution.">?</span></label>
-                    <select id="model-select">
-                        <option value="">Default</option>
-                        <option value="sonnet">Sonnet</option>
-                        <option value="opus">Opus</option>
-                        <option value="haiku">Haiku</option>
-                        <option value="opusplan">Opus Plan</option>
-                    </select>
-                </div>
-                <div class="launch-select">
-                    <label>Effort: <span class="tip" data-tip="Controls how much effort Claude spends on responses. 'Low' gives quick, concise answers. 'Medium' balances speed and thoroughness. 'High' gives the most detailed and thorough responses.">?</span></label>
-                    <div class="toggle-group" id="flag-effort-level">
-                        <button type="button" class="toggle-btn" data-value="low">Low</button>
-                        <button type="button" class="toggle-btn" data-value="medium">Med</button>
-                        <button type="button" class="toggle-btn active" data-value="high">High</button>
-                    </div>
-                </div>
-                <div class="launch-advanced-toggle" id="advanced-options-toggle">
-                    Advanced Options <span class="toggle-arrow">&#9654;</span>
-                </div>
-                <div id="advanced-options" class="launch-advanced hidden">
-                    <div class="launch-field">
-                        <label class="flag-option">
-                            <input type="checkbox" id="flag-agent-teams">
-                            <span>Agent Teams</span> Deploy agents on launch
-                            <span class="tip" data-tip="Enables the multi-agent team system. Selected agent definitions (.md files) are deployed to the project's .claude/agents/ directory on launch. If none are selected, defaults to the core team (architect, builder, tester, secops, devops). Sentinel (context watchdog) is always active.">?</span>
-                        </label>
-                        <div id="sidebar-agents-summary" class="sidebar-agents-summary hidden">
-                            <div id="sidebar-agents-list" class="sidebar-agents-list">
-                                <span style="color:var(--text-secondary);font-size:0.75rem;">No agents selected</span>
-                            </div>
-                            <button class="btn-sm" id="btn-open-agents-modal" style="width:100%;margin-top:6px;">Change Agents</button>
-                        </div>
-                    </div>
-                    <div class="launch-field">
-                        <label class="flag-option">
-                            <input type="checkbox" id="flag-extended-thinking">
-                            <span>Extended Thinking</span>
-                            <span class="tip" data-tip="Gives Claude a private 'scratchpad' to think through complex problems before responding. Uses extra tokens but significantly improves reasoning on hard tasks like debugging, architecture decisions, and multi-step logic.">?</span>
-                        </label>
-                        <div id="thinking-tokens-wrap" class="sub-field hidden">
-                            <label>Token Budget: <span class="tip" data-tip="Maximum tokens Claude can use for internal thinking (1,024 - 63,999). Higher = deeper reasoning but slower and more expensive. 31,999 is a good default. Use 10,000-16,000 for simpler tasks, 50,000+ for very complex problems.">?</span></label>
-                            <input type="number" id="flag-thinking-tokens" min="1024" max="63999" value="31999">
-                        </div>
-                    </div>
-                    <div class="launch-field">
-                        <label>System Prompt Append: <span class="tip" data-tip="Custom instructions appended to Claude's system prompt for this session. Use this to set project-specific rules, coding style preferences, or task context that Claude should always follow.">?</span></label>
-                        <textarea id="flag-system-prompt" rows="3" maxlength="10000" placeholder="Additional instructions for this session..."></textarea>
-                    </div>
-                    <div class="launch-select">
-                        <label>Fallback Model: <span class="tip" data-tip="If the primary model is unavailable or rate-limited, Claude CLI will automatically fall back to this model instead of failing.">?</span></label>
-                        <select id="flag-fallback-model">
-                            <option value="">None</option>
-                            <option value="sonnet">Sonnet</option>
-                            <option value="opus">Opus</option>
-                            <option value="haiku">Haiku</option>
-                        </select>
-                    </div>
-                    <div class="launch-field">
-                        <label>Auto-Compact Threshold (%): <span class="tip" data-tip="When context window usage reaches this percentage, Claude automatically compacts the conversation to free space. 80% is the recommended default — compacts early enough to avoid losing work, but preserves most context. Lower (60-70%) for safety on long tasks. Higher (90%+) to maximize context at the risk of mid-task compaction.">?</span></label>
-                        <input type="number" id="flag-autocompact-threshold" min="50" max="100" value="80">
-                    </div>
-                    <div class="launch-field">
-                        <label>Allowed Tools: <span class="tip" data-tip="Restrict Claude to ONLY these tools (comma-separated). Example: Read,Grep,Glob would make Claude read-only. If set, Claude cannot use any tools not listed here.">?</span></label>
-                        <input type="text" id="flag-allowed-tools" placeholder="e.g. Read,Grep,Glob" autocomplete="off">
-                    </div>
-                    <div class="launch-field">
-                        <label>Disallowed Tools: <span class="tip" data-tip="Block Claude from using these specific tools (comma-separated). Example: Bash,Write prevents shell commands and file writes. Claude can still use all other tools not listed.">?</span></label>
-                        <input type="text" id="flag-disallowed-tools" placeholder="e.g. Bash,Write" autocomplete="off">
-                    </div>
-                    <div class="launch-field">
-                        <label>Additional Directories: <span class="tip" data-tip="Extra directories Claude can access beyond the project root. One path per line. Useful when your project depends on files outside the main project folder (shared libraries, config dirs, etc).">?</span></label>
-                        <textarea id="flag-add-dirs" rows="2" placeholder="One path per line..."></textarea>
-                    </div>
-                    <div class="launch-field">
-                        <label>MCP Config File: <span class="tip" data-tip="Optional. Claude Code automatically loads MCP servers from ~/.claude/settings.json and your project's .claude/settings.json. Only use this field to load an additional MCP config file beyond those standard locations. Leave blank if your MCP servers are already configured in your Claude settings.">?</span></label>
-                        <input type="text" id="flag-mcp-config" placeholder="/path/to/mcp-config.json" autocomplete="off">
-                    </div>
-                </div>
-                </div>
-            </div>
         </aside>
 
         <!-- Main Content -->
@@ -215,6 +96,7 @@
                 <button class="view-tab active" data-view="terminal">Terminal</button>
                 <button class="view-tab" data-view="chat">Chat</button>
                 <button class="view-tab" data-view="files">Files</button>
+                <button class="view-tab" data-view="options">Options</button>
             </div>
 
             <!-- Terminal View -->
@@ -286,6 +168,179 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Options View -->
+            <div id="options-view" class="view-content">
+                <div class="options-scroll scrollable">
+                    <div class="options-grid">
+
+                        <!-- Session -->
+                        <div class="options-card">
+                            <div class="options-card-header">Session</div>
+                            <div class="options-card-body">
+                                <div class="options-field">
+                                    <label class="options-checkbox">
+                                        <input type="checkbox" id="flag-resume">
+                                        <span class="options-flag-name">-r</span> Resume last conversation
+                                    </label>
+                                    <p class="options-desc">Resumes the most recent conversation exactly where it left off, restoring the full context. Claude sees everything from the previous session.</p>
+                                </div>
+                                <div class="options-field">
+                                    <label class="options-checkbox">
+                                        <input type="checkbox" id="flag-continue">
+                                        <span class="options-flag-name">-c</span> Continue conversation
+                                    </label>
+                                    <p class="options-desc">Starts a new conversation but pre-loads a summary of the most recent session. Useful when the previous context is too large or you want a fresh start with some history.</p>
+                                </div>
+                                <div class="options-field">
+                                    <label class="options-checkbox">
+                                        <input type="checkbox" id="flag-verbose">
+                                        <span class="options-flag-name">--verbose</span> Verbose output
+                                    </label>
+                                    <p class="options-desc">Shows detailed output including tool calls, file reads, and internal reasoning steps.</p>
+                                </div>
+                                <div class="options-field">
+                                    <label class="options-checkbox">
+                                        <input type="checkbox" id="flag-print-mode">
+                                        <span class="options-flag-name">-p</span> Print mode (one-shot)
+                                    </label>
+                                    <p class="options-desc">Runs a single prompt and prints the response to stdout, then exits. No interactive session. Great for scripting or quick queries.</p>
+                                </div>
+                                <div id="print-prompt-wrap" class="options-sub-field hidden">
+                                    <label>Prompt</label>
+                                    <textarea id="flag-print-prompt" rows="2" maxlength="10000" placeholder="Enter prompt for one-shot query..."></textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Model & Effort -->
+                        <div class="options-card">
+                            <div class="options-card-header">Model &amp; Effort</div>
+                            <div class="options-card-body">
+                                <div class="options-field">
+                                    <label>Model</label>
+                                    <p class="options-desc">Which Claude model to use. Opus is the most capable but slowest. Sonnet is a good balance. Haiku is the fastest and cheapest. Opus Plan uses Opus for planning and Sonnet for execution.</p>
+                                    <select id="model-select">
+                                        <option value="">Default</option>
+                                        <option value="sonnet">Sonnet</option>
+                                        <option value="opus">Opus</option>
+                                        <option value="haiku">Haiku</option>
+                                        <option value="opusplan">Opus Plan</option>
+                                    </select>
+                                </div>
+                                <div class="options-field">
+                                    <label>Effort</label>
+                                    <p class="options-desc">Controls how much effort Claude spends on responses. Low gives quick, concise answers. High gives the most detailed and thorough responses.</p>
+                                    <div class="toggle-group" id="flag-effort-level">
+                                        <button type="button" class="toggle-btn" data-value="low">Low</button>
+                                        <button type="button" class="toggle-btn" data-value="medium">Med</button>
+                                        <button type="button" class="toggle-btn active" data-value="high">High</button>
+                                    </div>
+                                </div>
+                                <div class="options-field">
+                                    <label>Fallback Model</label>
+                                    <p class="options-desc">If the primary model is unavailable or rate-limited, Claude CLI will automatically fall back to this model instead of failing.</p>
+                                    <select id="flag-fallback-model">
+                                        <option value="">None</option>
+                                        <option value="sonnet">Sonnet</option>
+                                        <option value="opus">Opus</option>
+                                        <option value="haiku">Haiku</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Permissions & Tools -->
+                        <div class="options-card">
+                            <div class="options-card-header">Permissions &amp; Tools</div>
+                            <div class="options-card-body">
+                                <div class="options-field">
+                                    <label>Permission Mode</label>
+                                    <p class="options-desc">Controls what Claude can do without asking permission. Default prompts for each action. Accept Edits auto-approves file reads and writes but asks for shell commands. Plan is read-only. Don't Ask auto-approves everything except destructive operations. Bypass All disables all permission checks.</p>
+                                    <select id="flag-permission-mode">
+                                        <option value="">Default</option>
+                                        <option value="acceptEdits">Accept Edits</option>
+                                        <option value="plan">Plan Only</option>
+                                        <option value="dontAsk">Don't Ask</option>
+                                        <option value="bypassPermissions">Bypass All</option>
+                                    </select>
+                                </div>
+                                <div class="options-field">
+                                    <label>Allowed Tools</label>
+                                    <p class="options-desc">Restrict Claude to ONLY these tools (comma-separated). Example: Read,Grep,Glob would make Claude read-only. If set, Claude cannot use any tools not listed here.</p>
+                                    <input type="text" id="flag-allowed-tools" placeholder="e.g. Read,Grep,Glob" autocomplete="off">
+                                </div>
+                                <div class="options-field">
+                                    <label>Disallowed Tools</label>
+                                    <p class="options-desc">Block Claude from using these specific tools (comma-separated). Example: Bash,Write prevents shell commands and file writes. Claude can still use all other tools not listed.</p>
+                                    <input type="text" id="flag-disallowed-tools" placeholder="e.g. Bash,Write" autocomplete="off">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Context -->
+                        <div class="options-card">
+                            <div class="options-card-header">Context</div>
+                            <div class="options-card-body">
+                                <div class="options-field">
+                                    <label class="options-checkbox">
+                                        <input type="checkbox" id="flag-extended-thinking">
+                                        Extended Thinking
+                                    </label>
+                                    <p class="options-desc">Gives Claude a private scratchpad to think through complex problems before responding. Uses extra tokens but significantly improves reasoning on hard tasks like debugging, architecture decisions, and multi-step logic.</p>
+                                </div>
+                                <div id="thinking-tokens-wrap" class="options-sub-field hidden">
+                                    <label>Token Budget</label>
+                                    <p class="options-desc">Maximum tokens for internal thinking (1,024 - 63,999). Higher means deeper reasoning but slower. 31,999 is a good default.</p>
+                                    <input type="number" id="flag-thinking-tokens" min="1024" max="63999" value="31999">
+                                </div>
+                                <div class="options-field">
+                                    <label>Auto-Compact Threshold (%)</label>
+                                    <p class="options-desc">When context window usage reaches this percentage, Claude automatically compacts the conversation to free space. 80% is recommended. Lower (60-70%) for safety on long tasks. Higher (90%+) to maximize context.</p>
+                                    <input type="number" id="flag-autocompact-threshold" min="50" max="100" value="80">
+                                </div>
+                                <div class="options-field">
+                                    <label>System Prompt Append</label>
+                                    <p class="options-desc">Custom instructions appended to Claude's system prompt for this session. Use for project-specific rules, coding style preferences, or task context that Claude should always follow.</p>
+                                    <textarea id="flag-system-prompt" rows="4" maxlength="10000" placeholder="Additional instructions for this session..."></textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Project -->
+                        <div class="options-card">
+                            <div class="options-card-header">Project</div>
+                            <div class="options-card-body">
+                                <div class="options-field">
+                                    <label class="options-checkbox">
+                                        <input type="checkbox" id="flag-agent-teams">
+                                        Agent Teams
+                                    </label>
+                                    <p class="options-desc">Enables the multi-agent team system. Selected agent definitions are deployed to the project's .claude/agents/ directory on launch. If none are selected, defaults to the core team. Sentinel (context watchdog) is always active.</p>
+                                </div>
+                                <div id="sidebar-agents-summary" class="options-agents-panel hidden">
+                                    <div id="sidebar-agents-list" class="options-agents-list">
+                                        <span style="color:var(--text-secondary);font-size:0.8rem;">No agents selected</span>
+                                    </div>
+                                    <button class="btn-sm" id="btn-open-agents-modal" style="width:100%;margin-top:8px;">Change Agents</button>
+                                </div>
+                                <div class="options-field">
+                                    <label>Additional Directories</label>
+                                    <p class="options-desc">Extra directories Claude can access beyond the project root. One path per line. Useful when your project depends on files outside the main project folder.</p>
+                                    <textarea id="flag-add-dirs" rows="2" placeholder="One path per line..."></textarea>
+                                </div>
+                                <div class="options-field">
+                                    <label>MCP Config File</label>
+                                    <p class="options-desc">Optional. Claude Code automatically loads MCP servers from ~/.claude/settings.json and your project's .claude/settings.json. Only use this to load an additional config file beyond those standard locations.</p>
+                                    <input type="text" id="flag-mcp-config" placeholder="/path/to/mcp-config.json" autocomplete="off">
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
         </main>
     </div>
 

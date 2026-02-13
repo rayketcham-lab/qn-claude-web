@@ -323,53 +323,6 @@ html, body {
 }
 
 /* Launch Options */
-#launch-options {
-    padding: 12px;
-    border-top: 1px solid var(--border-color);
-    background: var(--bg-tertiary);
-    overflow-y: auto;
-    max-height: 60vh;
-    flex-shrink: 1;
-    min-height: 0;
-    scrollbar-width: thin;
-    scrollbar-color: var(--border-color) transparent;
-}
-
-#launch-options::-webkit-scrollbar {
-    width: 6px;
-}
-
-#launch-options::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-#launch-options::-webkit-scrollbar-thumb {
-    background: var(--border-color);
-    border-radius: 3px;
-}
-
-.launch-options-toggle {
-    font-size: 0.85rem;
-    color: var(--text-secondary);
-    margin-bottom: 0;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 2px 0;
-    user-select: none;
-}
-
-.launch-options-toggle:hover {
-    color: var(--text-primary);
-}
-
-.launch-options-toggle .toggle-arrow {
-    font-size: 0.7rem;
-    color: var(--text-secondary);
-    transition: transform 0.2s;
-}
-
 .flag-option {
     display: flex;
     align-items: center;
@@ -436,31 +389,6 @@ html, body {
     pointer-events: none;
 }
 
-.launch-select {
-    margin-top: 8px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.launch-select label {
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-    white-space: nowrap;
-    min-width: 70px;
-}
-
-.launch-select select {
-    flex: 1;
-    padding: 6px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    color: var(--text-primary);
-    border-radius: 4px;
-    font-family: inherit;
-    font-size: 0.8rem;
-}
-
 /* Effort level 3-button toggle */
 .toggle-group {
     display: flex;
@@ -492,99 +420,9 @@ html, body {
     font-weight: 500;
 }
 
-/* Advanced options collapsible */
-.launch-advanced-toggle {
-    margin-top: 10px;
-    padding: 6px 0;
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.launch-advanced-toggle:hover { color: var(--text-primary); }
-
 .toggle-arrow {
     font-size: 0.65rem;
     transition: transform 0.2s;
-}
-
-.launch-advanced { padding-top: 4px; }
-
-.launch-field {
-    margin-bottom: 10px;
-}
-
-.launch-field > label {
-    display: block;
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-    margin-bottom: 3px;
-}
-
-.launch-field input[type="number"],
-.launch-field input[type="text"],
-.launch-field textarea {
-    width: 100%;
-    padding: 6px 8px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    color: var(--text-primary);
-    border-radius: 4px;
-    font-family: inherit;
-    font-size: 0.8rem;
-    box-sizing: border-box;
-}
-
-.launch-field input[type="number"]:focus,
-.launch-field input[type="text"]:focus,
-.launch-field textarea:focus {
-    outline: none;
-    border-color: var(--accent);
-}
-
-.launch-field textarea {
-    resize: vertical;
-    min-height: 50px;
-}
-
-.sub-field {
-    margin-top: 4px;
-    padding-left: 24px;
-}
-
-.sub-field label { font-size: 0.75rem; }
-
-.sub-field input[type="number"] {
-    width: calc(100% - 24px);
-}
-
-.sub-field textarea {
-    width: calc(100% - 24px);
-    padding: 6px 8px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    color: var(--text-primary);
-    border-radius: 4px;
-    font-family: inherit;
-    font-size: 0.8rem;
-    box-sizing: border-box;
-    resize: vertical;
-    min-height: 40px;
-}
-
-.sub-field textarea:focus {
-    outline: none;
-    border-color: var(--accent);
-}
-
-.launch-field .hint {
-    font-size: 0.7rem;
-    color: var(--text-secondary);
-    opacity: 0.7;
-    margin-top: 2px;
 }
 
 /* ============== Main Content ============== */
@@ -981,20 +819,17 @@ html, body {
         padding: 10px;
     }
 
-    #launch-options {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        max-height: 30vh;
+    .options-scroll {
+        padding: 12px;
     }
 
-    #launch-options h3 {
-        width: 100%;
+    .options-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
     }
 
-    .flag-option {
-        flex: 1;
-        min-width: 45%;
+    .options-card-body {
+        padding: 14px;
     }
 }
 
@@ -2007,6 +1842,157 @@ html, body {
     flex: 1;
     overflow: auto;
     background: var(--bg-tertiary);
+}
+
+/* ============== Options View ============== */
+
+.options-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px;
+}
+
+.options-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+    gap: 20px;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.options-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.options-card-header {
+    padding: 14px 18px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--claude-orange);
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
+    letter-spacing: 0.02em;
+}
+
+.options-card-body {
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.options-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.options-field > label {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.options-desc {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin: 0 0 6px 0;
+}
+
+.options-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+.options-checkbox input[type="checkbox"] {
+    accent-color: var(--accent);
+}
+
+.options-flag-name {
+    color: var(--accent);
+    font-weight: 600;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.options-field select,
+.options-field input[type="text"],
+.options-field input[type="number"],
+.options-field textarea {
+    width: 100%;
+    padding: 8px 10px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 0.85rem;
+    box-sizing: border-box;
+}
+
+.options-field select:focus,
+.options-field input:focus,
+.options-field textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.options-field textarea {
+    resize: vertical;
+    min-height: 60px;
+}
+
+.options-sub-field {
+    padding-left: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.options-sub-field label {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-bottom: 2px;
+}
+
+.options-sub-field input,
+.options-sub-field textarea {
+    width: 100%;
+    padding: 6px 8px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 0.85rem;
+    box-sizing: border-box;
+}
+
+.options-sub-field input:focus,
+.options-sub-field textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.options-agents-panel {
+    padding: 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    margin-top: 4px;
+}
+
+.options-agents-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
 }
 
 .file-item {
