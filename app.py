@@ -3078,6 +3078,79 @@ def api_project_init():
     return jsonify({'success': True, 'path': claude_md_path})
 
 
+@app.route('/api/project/deploy-claude-md', methods=['POST'])
+@login_required
+def api_project_deploy_claude_md():
+    """Deploy the server's own CLAUDE.md as template to a target project"""
+    data = request.json or {}
+    path = data.get('path', '')
+    if not path or not isinstance(path, str):
+        return jsonify({'error': 'Path required'}), 400
+
+    if '\x00' in path:
+        return jsonify({'error': 'Invalid path'}), 400
+
+    path = os.path.expanduser(path)
+    if not os.path.isdir(path):
+        return jsonify({'error': 'Not a directory'}), 400
+
+    if not validate_file_path(path):
+        return jsonify({'error': 'Path not allowed'}), 403
+
+    resolved_path = str(Path(path).resolve())
+    if not validate_file_path(resolved_path):
+        return jsonify({'error': 'Resolved path not allowed'}), 403
+
+    # Read the server's own CLAUDE.md as the template
+    server_claude_md = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'CLAUDE.md')
+    if not os.path.isfile(server_claude_md):
+        return jsonify({'error': 'Server CLAUDE.md template not found'}), 500
+
+    try:
+        with open(server_claude_md, 'r') as f:
+            template_content = f.read()
+    except OSError:
+        return jsonify({'error': 'Failed to read template'}), 500
+
+    # Write to target project
+    target_path = os.path.join(resolved_path, 'CLAUDE.md')
+    try:
+        # Use atomic write (temp-then-rename)
+        tmp_path = target_path + '.tmp'
+        with open(tmp_path, 'w') as f:
+            f.write(template_content)
+        os.replace(tmp_path, target_path)
+    except OSError:
+        return jsonify({'error': 'Failed to write CLAUDE.md'}), 500
+
+    # Also deploy .claude/agents/ if the server has them
+    server_agents_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.claude', 'agents')
+    if os.path.isdir(server_agents_dir):
+        target_agents_dir = os.path.join(resolved_path, '.claude', 'agents')
+        os.makedirs(target_agents_dir, exist_ok=True)
+        deployed_agents = []
+        for fname in os.listdir(server_agents_dir):
+            if fname.endswith('.md'):
+                src = os.path.join(server_agents_dir, fname)
+                dst = os.path.join(target_agents_dir, fname)
+                try:
+                    with open(src, 'r') as sf:
+                        content = sf.read()
+                    tmp_dst = dst + '.tmp'
+                    with open(tmp_dst, 'w') as df:
+                        df.write(content)
+                    os.replace(tmp_dst, dst)
+                    deployed_agents.append(fname)
+                except OSError:
+                    pass  # Skip individual agent files that fail
+
+    return jsonify({
+        'success': True,
+        'path': target_path,
+        'agents_deployed': deployed_agents if os.path.isdir(server_agents_dir) else []
+    })
+
+
 # ============== Maintenance API ==============
 
 def get_claude_version():

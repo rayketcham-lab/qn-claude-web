@@ -1068,9 +1068,9 @@ class ClaudeCodeWeb {
             }
         });
 
-        // Wizard
+        // Deploy CLAUDE.md
         document.getElementById('btn-init-wizard').addEventListener('click', () => {
-            if (this.selectedProject) this.openWizard(this.selectedProject);
+            if (this.selectedProject) this.deployClaudeMd(this.selectedProject);
         });
         document.getElementById('wizard-close').addEventListener('click', () => this.closeWizard());
         document.getElementById('wizard-overlay').addEventListener('click', (e) => {
@@ -2850,6 +2850,46 @@ class ClaudeCodeWeb {
             }
         } catch (e) {
             this.showToast('Failed to delete user', 'error');
+        }
+    }
+
+    // ============== Deploy CLAUDE.md ==============
+
+    async deployClaudeMd(projectPath) {
+        // Check if target already has a CLAUDE.md
+        try {
+            const detectRes = await fetch(`/api/project/detect?path=${encodeURIComponent(projectPath)}`);
+            if (detectRes.ok) {
+                const detectData = await detectRes.json();
+                if (detectData.has_claude_md) {
+                    const overwrite = await this.confirm(
+                        'CLAUDE.md Exists',
+                        'This project already has a CLAUDE.md file. Do you want to overwrite it with the server template?',
+                        'Overwrite', 'warning'
+                    );
+                    if (!overwrite) return;
+                }
+            }
+        } catch (e) {
+            // Continue anyway — we'll still try to deploy
+        }
+
+        // Fetch the server's own CLAUDE.md as the template
+        try {
+            const res = await fetch('/api/project/deploy-claude-md', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: projectPath }),
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                this.showToast('CLAUDE.md deployed to project', 'success');
+                this.loadProjects(this.currentRoot);
+            } else {
+                this.showToast(data.error || 'Failed to deploy CLAUDE.md', 'error');
+            }
+        } catch (e) {
+            this.showToast('Failed to deploy CLAUDE.md: ' + e.message, 'error');
         }
     }
 

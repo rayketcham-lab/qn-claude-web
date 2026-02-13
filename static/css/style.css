@@ -674,6 +674,28 @@ html, body {
     background: var(--border-color);
 }
 
+.btn-action {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.7rem;
+    padding: 3px 10px;
+    white-space: nowrap;
+}
+
+.btn-action:hover {
+    background: var(--border-color);
+    color: var(--text-primary);
+}
+
+.btn-action-danger:hover {
+    background: rgba(248, 113, 113, 0.15);
+    border-color: #f87171;
+    color: #f87171;
+}
+
 #terminal-container {
     flex: 1;
     display: flex;
