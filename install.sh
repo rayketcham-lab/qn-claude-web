@@ -29,7 +29,7 @@ VERSION="1.4.1"
 
 # SHA-256 hashes baked at build time
 declare -A FILE_HASHES=(
-    ["app.py"]="7ea76665931cd460fb9e579ce5d250296a7b62395be8b2cafc69536a13f8d84b"
+    ["app.py"]="184f97e0e63924545486d84d2593fd77b655c45fd1b4455f35c6ddf7640b52f7"
     ["static/js/app.js"]="c586c4b324ff918f7cd34d557a72fe46e5768e5373023766ffc4d7b7f8e88569"
     ["static/css/style.css"]="d77b84dbfb930c37ef5f392fefd81c9f7df52f6587b22e2139c889dd15a10f8a"
     ["templates/index.html"]="702f3c1291ff72cbd889373a693d9dbed8ef493976e0cad5a57e72781f2dde6f"
@@ -41,7 +41,7 @@ declare -A FILE_HASHES=(
     ["apache-proxy.conf"]="5eab0edd895142e586693d410f82146cea4fd7dc0327c684cbf4b80c65fda248"
     ["maintenance.sh"]="69cb8b8938771c83b810d4736113bb1dfdb4a225d83858eb3e475a284ae0ecdc"
     ["start.sh"]="656167268feeec311c199e8811c754000d916d769c4af55d0b2c891d71f7f2fd"
-    ["qn-code-assistant.service"]="5fa58e9ecb1be00dad08fdd7cc15388790aa3526c7a5c02b12276789d16c67fe"
+    ["qn-code-assistant.service"]="722ebb970d9c40ba4ea95f1424424f0041c4518e774ba8c027d008b6a725e6d4"
 )
 
 VENDOR_HASH="1ddb9ad9384df343937a83d208f5f3d7ff743170118973b0f6fcde65e20f3765"
