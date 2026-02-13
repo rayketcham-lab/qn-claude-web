@@ -642,22 +642,24 @@ class ClaudeCodeWeb {
             }
         });
 
-        this.socket.on('terminal_closed', (data) => {
+        this.socket.on('terminal_detached', (data) => {
             const term = this.terminals[data.id];
             if (term) {
-                if (data.tmux_alive && !data.tmux_killed) {
-                    const tmuxName = data.tmux_session || term.tmux_session || '';
-                    term.terminal.write('\r\n\x1b[36m[Detached from tmux session: ' + tmuxName + ']\x1b[0m\r\n');
-                    term.terminal.write('\x1b[36m[Session is still running — reconnect anytime]\x1b[0m\r\n');
-                } else {
-                    term.terminal.write('\r\n\x1b[33m[Terminal session ended]\x1b[0m\r\n');
-                }
+                const tmuxName = data.tmux_session || term.tmux_session || '';
+                term.terminal.write('\r\n\x1b[36m[Detached from tmux session: ' + tmuxName + ']\x1b[0m\r\n');
+                term.terminal.write('\x1b[36m[Session is still running — reconnect anytime]\x1b[0m\r\n');
                 term.closed = true;
                 this.renderTerminalTabs();
             }
-            // Show reconnect banner if tmux session persists (outside if-term since closeTerminalTab may have already removed it)
-            if (data.tmux_alive && !data.tmux_killed) {
-                this._checkDetachedSessions();
+            this._checkDetachedSessions();
+        });
+
+        this.socket.on('terminal_killed', (data) => {
+            const term = this.terminals[data.id];
+            if (term) {
+                term.terminal.write('\r\n\x1b[33m[Terminal session ended]\x1b[0m\r\n');
+                term.closed = true;
+                this.renderTerminalTabs();
             }
         });
 

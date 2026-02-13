@@ -29,8 +29,8 @@ VERSION="1.4.1"
 
 # SHA-256 hashes baked at build time
 declare -A FILE_HASHES=(
-    ["app.py"]="1ad8f7429112d735c174746df332dd71a31d087de144f879f865772af2be002c"
-    ["static/js/app.js"]="c586c4b324ff918f7cd34d557a72fe46e5768e5373023766ffc4d7b7f8e88569"
+    ["app.py"]="b35ae9853e641c14f4946aba0d75fc11326dfed5bbce31b2df2addba7579f603"
+    ["static/js/app.js"]="063d6c2338a39240bbdad8dbd4ea39174cd5ede8ce776c312d9d9151378e96b2"
     ["static/css/style.css"]="d77b84dbfb930c37ef5f392fefd81c9f7df52f6587b22e2139c889dd15a10f8a"
     ["templates/index.html"]="702f3c1291ff72cbd889373a693d9dbed8ef493976e0cad5a57e72781f2dde6f"
     ["templates/login.html"]="5e77d824bad5af53a817ea7cf554992cb1d77e2050a41bd0add00880d5454aac"

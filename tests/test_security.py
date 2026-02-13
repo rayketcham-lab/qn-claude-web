@@ -15,6 +15,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -43,6 +44,8 @@ TMUX_NAME_RE = app_module.TMUX_NAME_RE
 _generate_tmux_name = app_module._generate_tmux_name
 _tmux_list_sessions = app_module._tmux_list_sessions
 _tmux_session_exists = app_module._tmux_session_exists
+_reap_tmux_sessions = app_module._reap_tmux_sessions
+_pid_alive = app_module._pid_alive
 
 
 # ===================================================================
@@ -829,6 +832,95 @@ class TestTmuxSessionExists(unittest.TestCase):
             args=[], returncode=1, stdout='', stderr=''
         )
         self.assertFalse(_tmux_session_exists('qn-abcdef01'))
+
+
+# ===================================================================
+# 8. _pid_alive() tests
+# ===================================================================
+class TestPidAlive(unittest.TestCase):
+    """Test process liveness check."""
+
+    def test_current_process_is_alive(self):
+        self.assertTrue(_pid_alive(os.getpid()))
+
+    def test_bogus_pid_is_dead(self):
+        self.assertFalse(_pid_alive(999999999))
+
+
+# ===================================================================
+# 9. _reap_tmux_sessions() tests
+# ===================================================================
+class TestReapTmuxSessions(unittest.TestCase):
+    """Test tmux session reaping with mocked dependencies."""
+
+    @patch('app._tmux_kill_session')
+    @patch('app._pid_alive', return_value=False)
+    @patch('app._tmux_list_sessions')
+    def test_reaps_dead_pane(self, mock_list, mock_alive, mock_kill):
+        """Sessions with dead pane PIDs are killed."""
+        mock_list.return_value = [
+            {'name': 'qn-deadbeef', 'created': 0, 'attached': 0, 'pane_pid': 99999},
+        ]
+        _reap_tmux_sessions()
+        mock_kill.assert_called_once_with('qn-deadbeef')
+
+    @patch('app._tmux_kill_session')
+    @patch('app._pid_alive', return_value=True)
+    @patch('app._tmux_list_sessions')
+    def test_skips_alive_pane(self, mock_list, mock_alive, mock_kill):
+        """Sessions with alive pane PIDs are not killed."""
+        mock_list.return_value = [
+            {'name': 'qn-livebeef', 'created': int(time.time()), 'attached': 0, 'pane_pid': 1},
+        ]
+        _reap_tmux_sessions()
+        mock_kill.assert_not_called()
+
+    @patch('app._tmux_kill_session')
+    @patch('app._pid_alive', return_value=True)
+    @patch('app._tmux_list_sessions')
+    def test_reaps_old_detached(self, mock_list, mock_alive, mock_kill):
+        """Detached sessions older than timeout are killed."""
+        old_timestamp = int(time.time()) - (25 * 3600)  # 25 hours ago
+        mock_list.return_value = [
+            {'name': 'qn-oldbeef0', 'created': old_timestamp, 'attached': 0, 'pane_pid': 1},
+        ]
+        _reap_tmux_sessions()
+        mock_kill.assert_called_once_with('qn-oldbeef0')
+
+    @patch('app._tmux_kill_session')
+    @patch('app._tmux_list_sessions')
+    def test_skips_attached_sessions(self, mock_list, mock_kill):
+        """Sessions attached to active terminals are never reaped."""
+        mock_list.return_value = [
+            {'name': 'qn-attached', 'created': 0, 'attached': 0, 'pane_pid': 99999},
+        ]
+        # Simulate an active terminal attached to this session
+        with app_module.active_terminals_lock:
+            app_module.active_terminals['fake-tid'] = {
+                'tmux_session': 'qn-attached', 'pid': 1
+            }
+        try:
+            _reap_tmux_sessions()
+            mock_kill.assert_not_called()
+        finally:
+            with app_module.active_terminals_lock:
+                app_module.active_terminals.pop('fake-tid', None)
+
+    @patch('app._tmux_kill_session')
+    @patch('app._tmux_list_sessions')
+    def test_disabled_when_zero(self, mock_list, mock_kill):
+        """Reaping disabled when tmux_reap_hours is 0."""
+        original = CONFIG.get('tmux_reap_hours')
+        CONFIG['tmux_reap_hours'] = 0
+        try:
+            _reap_tmux_sessions()
+            mock_list.assert_not_called()
+            mock_kill.assert_not_called()
+        finally:
+            if original is None:
+                CONFIG.pop('tmux_reap_hours', None)
+            else:
+                CONFIG['tmux_reap_hours'] = original
 
 
 # ===================================================================

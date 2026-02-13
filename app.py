@@ -371,11 +371,59 @@ def cleanup_old_processes():
             active_chat_processes.pop(sid, None)
 
 
+def _reap_tmux_sessions():
+    """Kill tmux sessions with dead panes or detached beyond the timeout."""
+    timeout_hours = CONFIG.get('tmux_reap_hours', 24)
+    if timeout_hours <= 0:
+        return  # Reaping disabled
+
+    sessions = _tmux_list_sessions()
+    if not sessions:
+        return
+
+    # Build set of tmux names currently attached via active terminals
+    with active_terminals_lock:
+        attached = {t.get('tmux_session') for t in active_terminals.values() if t.get('tmux_session')}
+
+    now = time.time()
+    timeout_secs = timeout_hours * 3600
+
+    for s in sessions:
+        name = s['name']
+        pane_pid = s.get('pane_pid')
+
+        # Skip sessions that are actively attached
+        if name in attached:
+            continue
+
+        # Reap if pane process is dead
+        if pane_pid and not _pid_alive(pane_pid):
+            logger.info("Reaping tmux session %s (pane pid %d dead)", name, pane_pid)
+            _tmux_kill_session(name)
+            continue
+
+        # Reap if detached longer than timeout
+        created = s.get('created', 0)
+        if created and (now - created) > timeout_secs:
+            logger.info("Reaping tmux session %s (detached > %dh)", name, timeout_hours)
+            _tmux_kill_session(name)
+
+
+def _pid_alive(pid):
+    """Check if a process is still running."""
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
 def watchdog_thread():
     """Background thread that monitors and cleans up processes"""
     while watchdog_running:
         try:
             cleanup_old_processes()
+            _reap_tmux_sessions()
             # Save all sessions periodically
             backup_all_sessions()
             # Clean up expired rate limit entries
@@ -1719,10 +1767,10 @@ def handle_terminal_create(data):
     logger.info("Created tmux session %s for terminal %s (project: %s)", tmux_name, terminal_id, project_path)
 
     # Now attach to the tmux session via PTY (this is the WebSocket I/O layer)
-    _attach_to_tmux(terminal_id, tmux_name, project_path, flags, remote_host_id, log_file)
+    _attach_to_tmux(terminal_id, tmux_name, project_path, flags, remote_host_id, log_file, request.sid)
 
 
-def _attach_to_tmux(terminal_id, tmux_name, project_path, flags, remote_host_id, log_file):
+def _attach_to_tmux(terminal_id, tmux_name, project_path, flags, remote_host_id, log_file, ws_sid):
     """Attach a PTY to an existing tmux session for WebSocket I/O streaming."""
     pid, fd = pty.fork()
 
@@ -1744,7 +1792,7 @@ def _attach_to_tmux(terminal_id, tmux_name, project_path, flags, remote_host_id,
                 'flags': flags,
                 'remote_host_id': remote_host_id,
                 'started': datetime.now(),
-                'ws_sid': request.sid,
+                'ws_sid': ws_sid,
                 'tmux_session': tmux_name,
                 'log_file': log_file,
             }
@@ -1771,11 +1819,16 @@ def _attach_to_tmux(terminal_id, tmux_name, project_path, flags, remote_host_id,
                 if terminal_id in active_terminals:
                     tmux_alive = _tmux_session_exists(tmux_name)
                     del active_terminals[terminal_id]
-                    socketio.emit('terminal_closed', {
-                        'id': terminal_id,
-                        'tmux_session': tmux_name,
-                        'tmux_alive': tmux_alive,
-                    })
+                    if tmux_alive:
+                        socketio.emit('terminal_detached', {
+                            'id': terminal_id,
+                            'tmux_session': tmux_name,
+                        })
+                    else:
+                        socketio.emit('terminal_killed', {
+                            'id': terminal_id,
+                            'tmux_session': tmux_name,
+                        })
 
         thread = threading.Thread(target=read_terminal, daemon=True)
         thread.start()
@@ -1826,9 +1879,9 @@ def handle_terminal_resize(data):
 
 @socketio.on('terminal_kill')
 def handle_terminal_kill(data):
-    """Kill terminal and its tmux session"""
+    """Kill terminal PTY attachment; optionally destroy the tmux session."""
     terminal_id = data.get('id')
-    kill_tmux = data.get('kill_tmux', True)
+    kill_tmux = data.get('kill_tmux', False)
 
     with active_terminals_lock:
         term = active_terminals.pop(terminal_id, None)
@@ -1847,7 +1900,10 @@ def handle_terminal_kill(data):
             _tmux_kill_session(tmux_name)
             logger.info("Killed tmux session %s", tmux_name)
 
-        emit('terminal_closed', {'id': terminal_id, 'tmux_killed': kill_tmux})
+        if kill_tmux:
+            emit('terminal_killed', {'id': terminal_id, 'tmux_session': tmux_name})
+        else:
+            emit('terminal_detached', {'id': terminal_id, 'tmux_session': tmux_name})
 
 
 @socketio.on('terminal_detach')
@@ -1867,11 +1923,9 @@ def handle_terminal_detach(data):
         except OSError:
             pass
 
-        emit('terminal_closed', {
+        emit('terminal_detached', {
             'id': terminal_id,
             'tmux_session': tmux_name,
-            'tmux_alive': True,
-            'detached': True,
         })
         logger.info("Detached from tmux session %s (terminal %s)", tmux_name, terminal_id)
 
@@ -1907,7 +1961,7 @@ def handle_terminal_reconnect(data):
     log_file = os.path.join(AGENT_LOG_DIR, f'{tmux_name}.log')
 
     logger.info("Reconnecting terminal %s to tmux session %s", terminal_id, tmux_name)
-    _attach_to_tmux(terminal_id, tmux_name, project_path, {}, None, log_file)
+    _attach_to_tmux(terminal_id, tmux_name, project_path, {}, None, log_file, request.sid)
 
 
 @socketio.on('terminal_kill_tmux')
