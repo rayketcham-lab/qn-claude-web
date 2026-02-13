@@ -12,6 +12,7 @@ Uses unittest (no external dependencies).
 """
 
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -38,6 +39,10 @@ validate_file_path = app_module.validate_file_path
 build_claude_command = app_module.build_claude_command
 build_claude_env = app_module.build_claude_env
 CONFIG = app_module.CONFIG
+TMUX_NAME_RE = app_module.TMUX_NAME_RE
+_generate_tmux_name = app_module._generate_tmux_name
+_tmux_list_sessions = app_module._tmux_list_sessions
+_tmux_session_exists = app_module._tmux_session_exists
 
 
 # ===================================================================
@@ -663,6 +668,167 @@ class TestBuildClaudeEnv(unittest.TestCase):
         self.assertEqual(env['MAX_THINKING_TOKENS'], '40000')
         self.assertEqual(env['CLAUDE_AUTOCOMPACT_PCT_OVERRIDE'], '80')
         self.assertEqual(env['CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS'], '1')
+
+
+# ===================================================================
+# 5. TMUX_NAME_RE validation tests
+# ===================================================================
+class TestTmuxNameRegex(unittest.TestCase):
+    """Validate that TMUX_NAME_RE accepts only well-formed session names
+    and blocks injection payloads."""
+
+    # -- Valid names -------------------------------------------------
+    def test_valid_name(self):
+        self.assertRegex('qn-abcdef01', TMUX_NAME_RE)
+
+    def test_valid_all_hex_digits(self):
+        self.assertRegex('qn-0123abcd', TMUX_NAME_RE)
+
+    def test_valid_all_zeros(self):
+        self.assertRegex('qn-00000000', TMUX_NAME_RE)
+
+    def test_valid_all_f(self):
+        self.assertRegex('qn-ffffffff', TMUX_NAME_RE)
+
+    # -- Invalid: wrong prefix --------------------------------------
+    def test_reject_no_prefix(self):
+        self.assertIsNone(TMUX_NAME_RE.match('abcdef01'))
+
+    def test_reject_wrong_prefix(self):
+        self.assertIsNone(TMUX_NAME_RE.match('xx-abcdef01'))
+
+    # -- Invalid: wrong length --------------------------------------
+    def test_reject_too_short(self):
+        self.assertIsNone(TMUX_NAME_RE.match('qn-abcdef0'))
+
+    def test_reject_too_long(self):
+        self.assertIsNone(TMUX_NAME_RE.match('qn-abcdef012'))
+
+    def test_reject_empty_after_prefix(self):
+        self.assertIsNone(TMUX_NAME_RE.match('qn-'))
+
+    # -- Invalid: bad characters ------------------------------------
+    def test_reject_uppercase_hex(self):
+        self.assertIsNone(TMUX_NAME_RE.match('qn-ABCDEF01'))
+
+    def test_reject_special_chars(self):
+        self.assertIsNone(TMUX_NAME_RE.match('qn-abc!ef01'))
+
+    # -- Injection payloads ----------------------------------------
+    def test_reject_tmux_target_syntax(self):
+        """Blocks tmux target injection via colon."""
+        self.assertIsNone(TMUX_NAME_RE.match('qn-abcdef01:0'))
+
+    def test_reject_semicolon_injection(self):
+        self.assertIsNone(TMUX_NAME_RE.match('qn-abcdef01;rm'))
+
+    def test_reject_pipe_injection(self):
+        self.assertIsNone(TMUX_NAME_RE.match('qn-abcdef01|cat'))
+
+    def test_reject_newline_injection(self):
+        self.assertIsNone(TMUX_NAME_RE.match('qn-abcdef01\n'))
+
+    def test_reject_space_injection(self):
+        self.assertIsNone(TMUX_NAME_RE.match('qn-abcd ef01'))
+
+    def test_reject_path_traversal(self):
+        self.assertIsNone(TMUX_NAME_RE.match('qn-../../etc'))
+
+
+# ===================================================================
+# 6. _generate_tmux_name() tests
+# ===================================================================
+class TestGenerateTmuxName(unittest.TestCase):
+    """Verify tmux name generation follows the expected pattern."""
+
+    def test_standard_uuid(self):
+        name = _generate_tmux_name('a1b2c3d4-e5f6-7890-abcd-ef1234567890')
+        self.assertEqual(name, 'qn-a1b2c3d4')
+
+    def test_output_matches_regex(self):
+        name = _generate_tmux_name('deadbeef-1234-5678-9abc-def012345678')
+        self.assertRegex(name, TMUX_NAME_RE)
+
+    def test_short_input_preserved(self):
+        name = _generate_tmux_name('abcd1234')
+        self.assertEqual(name, 'qn-abcd1234')
+
+    def test_very_short_input(self):
+        name = _generate_tmux_name('ab')
+        self.assertEqual(name, 'qn-ab')
+
+
+# ===================================================================
+# 7. _tmux_list_sessions() / _tmux_session_exists() (mocked subprocess)
+# ===================================================================
+class TestTmuxListSessions(unittest.TestCase):
+    """Test _tmux_list_sessions parsing with mocked subprocess output."""
+
+    def _make_result(self, stdout, returncode=0):
+        return subprocess.CompletedProcess(
+            args=[], returncode=returncode, stdout=stdout, stderr=''
+        )
+
+    @patch('app.subprocess.run')
+    def test_parses_valid_output(self, mock_run):
+        mock_run.return_value = self._make_result(
+            'qn-abcdef01|1707840000|0|12345\nqn-12345678|1707850000|1|67890\n'
+        )
+        sessions = _tmux_list_sessions()
+        self.assertEqual(len(sessions), 2)
+        self.assertEqual(sessions[0]['name'], 'qn-abcdef01')
+        self.assertEqual(sessions[0]['created'], 1707840000)
+        self.assertEqual(sessions[0]['attached'], 0)
+        self.assertEqual(sessions[0]['pane_pid'], 12345)
+        self.assertEqual(sessions[1]['attached'], 1)
+
+    @patch('app.subprocess.run')
+    def test_filters_non_qn_sessions(self, mock_run):
+        mock_run.return_value = self._make_result(
+            'qn-abcdef01|1707840000|0|111\nother-session|1707840000|0|222\n'
+        )
+        sessions = _tmux_list_sessions()
+        self.assertEqual(len(sessions), 1)
+        self.assertEqual(sessions[0]['name'], 'qn-abcdef01')
+
+    @patch('app.subprocess.run')
+    def test_returns_empty_on_failure(self, mock_run):
+        mock_run.return_value = self._make_result('', returncode=1)
+        sessions = _tmux_list_sessions()
+        self.assertEqual(sessions, [])
+
+    @patch('app.subprocess.run')
+    def test_handles_empty_stdout(self, mock_run):
+        mock_run.return_value = self._make_result('')
+        sessions = _tmux_list_sessions()
+        self.assertEqual(sessions, [])
+
+    @patch('app.subprocess.run')
+    def test_handles_missing_pane_pid(self, mock_run):
+        mock_run.return_value = self._make_result(
+            'qn-abcdef01|1707840000|0\n'
+        )
+        sessions = _tmux_list_sessions()
+        self.assertEqual(len(sessions), 1)
+        self.assertIsNone(sessions[0]['pane_pid'])
+
+
+class TestTmuxSessionExists(unittest.TestCase):
+    """Test _tmux_session_exists with mocked subprocess."""
+
+    @patch('app.subprocess.run')
+    def test_returns_true_when_exists(self, mock_run):
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout='', stderr=''
+        )
+        self.assertTrue(_tmux_session_exists('qn-abcdef01'))
+
+    @patch('app.subprocess.run')
+    def test_returns_false_when_missing(self, mock_run):
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=1, stdout='', stderr=''
+        )
+        self.assertFalse(_tmux_session_exists('qn-abcdef01'))
 
 
 # ===================================================================

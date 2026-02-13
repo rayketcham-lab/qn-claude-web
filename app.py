@@ -261,7 +261,7 @@ active_terminals_lock = threading.Lock()
 
 # tmux session prefix for all QN-managed sessions
 TMUX_PREFIX = 'qn-'
-TMUX_NAME_RE = re.compile(r'^qn-[a-f0-9]{8}$')
+TMUX_NAME_RE = re.compile(r'^qn-[a-f0-9]{8}\Z')
 TMUX_BIN = '/usr/bin/tmux'
 AGENT_LOG_DIR = os.path.expanduser('~/.claude/agent-logs')
 os.makedirs(AGENT_LOG_DIR, exist_ok=True)
@@ -2749,8 +2749,6 @@ def api_tmux_sessions():
             'name': s['name'],
             'created': datetime.fromtimestamp(s['created']).isoformat() if s['created'] else None,
             'attached': s['name'] in attached_tmux,
-            'pane_pid': s['pane_pid'],
-            'log_file': os.path.join(AGENT_LOG_DIR, f"{s['name']}.log"),
         })
     return jsonify({'sessions': result})
 
@@ -3119,6 +3117,14 @@ if __name__ == '__main__':
     watchdog.start()
     logger.info("Started process monitor")
 
+    # Check tmux availability (required for persistent terminals)
+    try:
+        subprocess.run(['tmux', '-V'], capture_output=True, check=True)
+        tmux_available = True
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        tmux_available = False
+        logger.warning("tmux is not installed — persistent terminal sessions will not work")
+
     # Check Claude CLI version at startup
     cli_version = get_claude_version()
 
@@ -3143,6 +3149,7 @@ if __name__ == '__main__':
     logger.info("QN Code Assistant v%s", VERSION)
     logger.info("=" * 50)
     logger.info("Claude CLI: %s", cli_version or 'NOT FOUND')
+    logger.info("tmux: %s", 'available' if tmux_available else 'NOT FOUND')
     logger.info("Auth: %s", auth_status)
     logger.info("Starting server on %s://0.0.0.0:%s", protocol, port)
     logger.info("Projects root: %s", CONFIG['projects_root'])

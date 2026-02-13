@@ -29,7 +29,7 @@ VERSION="1.4.1"
 
 # SHA-256 hashes baked at build time
 declare -A FILE_HASHES=(
-    ["app.py"]="184f97e0e63924545486d84d2593fd77b655c45fd1b4455f35c6ddf7640b52f7"
+    ["app.py"]="1ad8f7429112d735c174746df332dd71a31d087de144f879f865772af2be002c"
     ["static/js/app.js"]="c586c4b324ff918f7cd34d557a72fe46e5768e5373023766ffc4d7b7f8e88569"
     ["static/css/style.css"]="d77b84dbfb930c37ef5f392fefd81c9f7df52f6587b22e2139c889dd15a10f8a"
     ["templates/index.html"]="702f3c1291ff72cbd889373a693d9dbed8ef493976e0cad5a57e72781f2dde6f"
@@ -224,6 +224,14 @@ check_prerequisites() {
     else
         log_error "Python 3 is not installed"
         missing=1
+    fi
+
+    # tmux (optional — needed for persistent terminal sessions)
+    if command -v tmux &> /dev/null; then
+        log_info "tmux found"
+    else
+        log_warn "tmux is not installed — persistent terminal sessions will not work"
+        log_warn "Install with: sudo apt install tmux (Debian/Ubuntu) or sudo yum install tmux (RHEL)"
     fi
 
     if [[ "${missing}" -eq 1 ]]; then

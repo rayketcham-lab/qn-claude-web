@@ -254,6 +254,9 @@ class TestAuthEnforcement(IntegrationTestBase):
     def test_terminals_endpoint_requires_auth(self):
         self._assert_auth_required('/api/terminals')
 
+    def test_tmux_sessions_endpoint_requires_auth(self):
+        self._assert_auth_required('/api/tmux/sessions')
+
 
 # ===================================================================
 # 4. TestRateLimiting

@@ -340,6 +340,14 @@ check_prerequisites() {
         missing=1
     fi
 
+    # tmux (optional — needed for persistent terminal sessions)
+    if command -v tmux &> /dev/null; then
+        log_info "tmux found"
+    else
+        log_warn "tmux is not installed — persistent terminal sessions will not work"
+        log_warn "Install with: sudo apt install tmux (Debian/Ubuntu) or sudo yum install tmux (RHEL)"
+    fi
+
     if [[ "${missing}" -eq 1 ]]; then
         echo ""
         log_error "Missing prerequisites. Please install them and try again."
