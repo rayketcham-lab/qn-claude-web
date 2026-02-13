@@ -43,7 +43,7 @@ If load is ORANGE or RED, output the status block and compact.
 ⚠️ SENTINEL: Compacting — session load at [ORANGE/RED].
 ```
 
-**Step 2**: Write checkpoint to CLAUDE.md under `## Session State`:
+**Step 2**: Write checkpoint to auto memory MEMORY.md under `## Session State`:
 ```
 ## Session State — [description]
 Task: [current objective]
@@ -85,9 +85,9 @@ Action: [proceed / compact first / save state and suggest new session]
 
 ## End-of-Session
 If RED and already compacted once:
-1. Write full session state to CLAUDE.md
+1. Write full session state to auto memory MEMORY.md
 2. Commit any pending changes
-3. Tell user: "Session state saved to CLAUDE.md. Pick up in new session."
+3. Tell user: "Session state saved to MEMORY.md. Pick up in new session."
 
 Never silently degrade. Bad code from context exhaustion is worse than pausing.
 

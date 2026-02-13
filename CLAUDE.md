@@ -2,30 +2,25 @@
 
 ## Context Window Management — MANDATORY
 
-### Sentinel Agent (Compaction Watchdog)
-Context window management is owned by the **Sentinel** agent (`.claude/agents/sentinel.md`). Sentinel is NOT a working agent — it is a background watchdog that monitors context utilization and forces compaction when thresholds are hit.
+### Sentinel Protocol
+There is no background watchdog. YOU are the only process. Full protocol: `.claude/agents/sentinel.md`
 
-**Sentinel has override authority over all other agents.** When Sentinel calls for compaction, all work stops immediately.
+**Checkpoints** (silent self-assess, output only if action needed):
+- Before/after every task, on agent role switch, after large outputs, every 5 exchanges
 
-| Utilization | Sentinel Action |
-|-------------|----------------|
-| < 50% | Silent — no action |
-| 50-60% | Advisory — notifies active agent compaction is approaching |
-| 60-75% | **Mandatory compact** — interrupts work, executes compaction, verifies continuity |
-| > 75% | **Emergency compact** — hard stop, aggressive compaction, essentials only |
+**Heuristics**: <10 tool calls = green, 10-25 = yellow, 25-40 = orange compact soon, 40+ = red compact NOW
 
-**Sentinel monitors at these boundaries:**
-- After every tool call with substantial output
-- After every agent transition
-- Every 3-5 conversational exchanges
-- Before any large task begins (preemptive assessment)
+**If user asks about Sentinel**: Execute the status check. Do NOT explain how it works. Output the status block, take action.
 
-**Rules (non-negotiable):**
-- NO agent may defer, delay, or skip a Sentinel compaction call
-- Sentinel's checkpoint is the source of truth for session continuity
-- Running out of context mid-task is catastrophic — premature compaction is always preferable
-- After compaction, the interrupted agent must restate their next step to prove continuity
-- See `.claude/agents/sentinel.md` for full compaction procedure and checkpoint format
+**Compaction**: Write session state checkpoint to MEMORY.md (auto memory), drop processed outputs, keep decisions and file paths. Continue working unless RED and already compacted once.
+
+**Session Continuity**: On compact or before exiting, ALWAYS update your auto memory MEMORY.md with:
+- What you were working on (task, file paths, line numbers)
+- What's done and what remains
+- Key decisions made this session
+- Next steps for the resuming session
+
+On session start, ALWAYS check MEMORY.md for previous session state and resume from where it left off.
 
 ---
 
@@ -37,14 +32,13 @@ This project uses a five-agent team model. Each agent has a distinct role, persp
 
 | Agent | Invoke With | Primary Responsibility |
 |-------|-------------|----------------------|
-| **Sentinel** | Always active (background) | Context window watchdog — monitors utilization, forces compaction, preserves continuity |
 | Architect | `@architect` or `/agents/architect.md` | System design, API contracts, dependency decisions, architecture reviews |
 | Builder | `@builder` or `/agents/builder.md` | Feature implementation, refactoring, code generation |
 | Tester | `@tester` or `/agents/tester.md` | Test creation, coverage analysis, edge case identification, fuzzing |
 | SecOps | `@secops` or `/agents/secops.md` | Security review, vulnerability analysis, compliance, crypto validation |
 | DevOps | `@devops` or `/agents/devops.md` | CI/CD, build systems, deployment, infrastructure, containerization |
 
-> **Sentinel runs passively at all times.** It is not invoked — it self-activates at threshold. The five working agents below are task-driven.
+> **Sentinel Protocol**: Every agent has a mandatory pre/post hook to self-assess context load. See `.claude/agents/sentinel.md`. This is not a separate agent — it is a discipline embedded in all agents.
 
 ### When to Engage Multiple Agents
 
