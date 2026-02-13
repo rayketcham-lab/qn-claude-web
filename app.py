@@ -255,8 +255,14 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated
 
-# Active terminal sessions: {session_id: {'pid': int, 'fd': int, 'thread': Thread, 'started': datetime}}
+# Active terminal sessions: {terminal_id: {'pid': int, 'fd': int, 'thread': Thread, 'started': datetime, 'tmux_session': str}}
 active_terminals = {}
+
+# tmux session prefix for all QN-managed sessions
+TMUX_PREFIX = 'qn-'
+TMUX_BIN = '/usr/bin/tmux'
+AGENT_LOG_DIR = os.path.expanduser('~/.claude/agent-logs')
+os.makedirs(AGENT_LOG_DIR, exist_ok=True)
 
 # Active chat processes: {session_id: {'process': Popen, 'started': datetime}}
 active_chat_processes = {}
@@ -269,15 +275,82 @@ chat_sessions_lock = threading.Lock()
 watchdog_running = True
 
 
+# ============== tmux Session Helpers ==============
+
+def _tmux_session_exists(name):
+    """Check if a tmux session with the given name exists."""
+    result = subprocess.run(
+        [TMUX_BIN, 'has-session', '-t', name],
+        capture_output=True,
+    )
+    return result.returncode == 0
+
+
+def _tmux_list_sessions():
+    """List all QN-managed tmux sessions with their status."""
+    result = subprocess.run(
+        [TMUX_BIN, 'list-sessions', '-F',
+         '#{session_name}|#{session_created}|#{session_attached}|#{pane_pid}'],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        return []
+    sessions = []
+    for line in result.stdout.strip().split('\n'):
+        if not line:
+            continue
+        parts = line.split('|')
+        if len(parts) >= 3 and parts[0].startswith(TMUX_PREFIX):
+            sessions.append({
+                'name': parts[0],
+                'created': int(parts[1]) if parts[1].isdigit() else 0,
+                'attached': int(parts[2]) if parts[2].isdigit() else 0,
+                'pane_pid': int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else None,
+            })
+    return sessions
+
+
+def _tmux_kill_session(name):
+    """Kill a tmux session by name."""
+    subprocess.run([TMUX_BIN, 'kill-session', '-t', name], capture_output=True)
+
+
+def _tmux_setup_logging(tmux_name, log_file):
+    """Set up pipe-pane logging for watchdog monitoring."""
+    subprocess.run(
+        [TMUX_BIN, 'pipe-pane', '-t', tmux_name, '-o', f'cat >> {shlex.quote(log_file)}'],
+        capture_output=True,
+    )
+
+
+def _generate_tmux_name(terminal_id):
+    """Generate a tmux session name from a terminal ID."""
+    # Use first 8 chars of UUID for readability
+    short_id = terminal_id[:8] if len(terminal_id) > 8 else terminal_id
+    return f"{TMUX_PREFIX}{short_id}"
+
+
+def _find_terminal_by_tmux(tmux_name):
+    """Find a terminal_id by its tmux session name."""
+    for tid, term in active_terminals.items():
+        if term.get('tmux_session') == tmux_name:
+            return tid
+    return None
+
+
 def cleanup_old_processes():
-    """Kill processes that have been running too long"""
+    """Clean up stale PTY attachments (tmux sessions are managed separately)"""
     timeout = timedelta(minutes=CONFIG['process_timeout_minutes'])
     now = datetime.now()
 
-    # Clean up terminals
+    # Clean up PTY attachments whose tmux sessions have died
     for tid, term in list(active_terminals.items()):
-        if now - term.get('started', now) > timeout:
-            logger.info("Killing stale terminal %s", tid)
+        tmux_name = term.get('tmux_session')
+        tmux_dead = tmux_name and not _tmux_session_exists(tmux_name)
+
+        if tmux_dead or (now - term.get('started', now) > timeout):
+            reason = "tmux session ended" if tmux_dead else "timeout"
+            logger.info("Cleaning up terminal %s (%s)", tid, reason)
             try:
                 os.kill(term['pid'], signal.SIGTERM)
             except OSError:
@@ -319,15 +392,15 @@ def backup_all_sessions():
 
 
 def shutdown_cleanup():
-    """Clean up all processes on shutdown"""
+    """Clean up PTY attachments on shutdown — tmux sessions persist for reconnect"""
     global watchdog_running
     watchdog_running = False
-    logger.info("Cleaning up processes...")
+    logger.info("Cleaning up processes (tmux sessions will persist)...")
 
     # Save all sessions
     backup_all_sessions()
 
-    # Kill all terminals
+    # Kill PTY attachments only — tmux sessions survive for reconnect on restart
     for tid, term in list(active_terminals.items()):
         try:
             os.kill(term['pid'], signal.SIGTERM)
@@ -340,6 +413,11 @@ def shutdown_cleanup():
             chat['process'].terminate()
         except OSError:
             pass
+
+    tmux_sessions = _tmux_list_sessions()
+    if tmux_sessions:
+        logger.info("Persisting %d tmux session(s): %s",
+                     len(tmux_sessions), ', '.join(s['name'] for s in tmux_sessions))
 
     logger.info("Cleanup complete")
 
@@ -1532,21 +1610,24 @@ def handle_connect():
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    """Handle client disconnection - clean up orphaned terminals"""
+    """Handle client disconnection - detach PTY but preserve tmux sessions"""
     sid = request.sid
-    # Kill terminals owned by this WebSocket session
     for tid, term in list(active_terminals.items()):
         if term.get('ws_sid') == sid:
+            tmux_name = term.get('tmux_session')
+            # Kill the PTY attachment only — tmux session persists
             try:
                 os.kill(term['pid'], signal.SIGTERM)
             except OSError:
                 pass
             active_terminals.pop(tid, None)
+            if tmux_name:
+                logger.info("Client disconnected — tmux session %s persists", tmux_name)
 
 
 @socketio.on('terminal_create')
 def handle_terminal_create(data):
-    """Create a new terminal session with Claude Code"""
+    """Create a new terminal session with Claude Code inside a persistent tmux session"""
     # Check concurrent terminal limit
     if len(active_terminals) >= CONFIG['max_concurrent_terminals']:
         emit('terminal_error', {'error': 'Too many concurrent terminals. Please close one first.'})
@@ -1556,6 +1637,8 @@ def handle_terminal_create(data):
     flags = data.get('flags', {})
     remote_host_id = data.get('remote_host_id')
     terminal_id = str(uuid.uuid4())
+    tmux_name = _generate_tmux_name(terminal_id)
+    log_file = os.path.join(AGENT_LOG_DIR, f'{tmux_name}.log')
 
     # Validate path for local terminals (remote paths are validated on the remote host)
     if not remote_host_id and not validate_file_path(project_path):
@@ -1586,20 +1669,57 @@ def handle_terminal_create(data):
     # For SSH mode, don't chdir locally. For local/mount, chdir to project path
     use_local_chdir = not (remote_host and remote_host.get('mode') == 'ssh')
 
-    # Create PTY
+    # Build the shell command that tmux will run
+    # Environment prefix for the tmux session
+    env_parts = [f'{shlex.quote(k)}={shlex.quote(v)}' for k, v in claude_env.items()
+                 if k not in os.environ or os.environ[k] != v]
+    env_prefix = ' '.join(env_parts) + ' ' if env_parts else ''
+
+    # The command tmux will execute
+    # Unset CLAUDECODE to avoid nested-session detection when server runs inside Claude Code
+    quoted_cmd = ' '.join(shlex.quote(c) for c in cmd)
+    unset_prefix = 'unset CLAUDECODE; '
+    if use_local_chdir:
+        tmux_shell_cmd = f'{unset_prefix}cd {shlex.quote(project_path)} && {env_prefix}{quoted_cmd}'
+    else:
+        tmux_shell_cmd = f'{unset_prefix}{env_prefix}{quoted_cmd}'
+
+    # Create the tmux session (detached)
+    tmux_result = subprocess.run(
+        [TMUX_BIN, 'new-session', '-d', '-s', tmux_name, '-x', '200', '-y', '50',
+         'bash', '-c', tmux_shell_cmd],
+        capture_output=True, text=True,
+    )
+    if tmux_result.returncode != 0:
+        logger.error("tmux new-session failed: %s", tmux_result.stderr)
+        emit('terminal_error', {'error': f'Failed to create tmux session: {tmux_result.stderr}'})
+        return
+
+    # Keep the pane alive after the command exits so the session can be reconnected
+    subprocess.run(
+        [TMUX_BIN, 'set-option', '-t', tmux_name, 'remain-on-exit', 'on'],
+        capture_output=True,
+    )
+
+    # Set up pipe-pane for watchdog logging
+    _tmux_setup_logging(tmux_name, log_file)
+    logger.info("Created tmux session %s for terminal %s (project: %s)", tmux_name, terminal_id, project_path)
+
+    # Now attach to the tmux session via PTY (this is the WebSocket I/O layer)
+    _attach_to_tmux(terminal_id, tmux_name, project_path, flags, remote_host_id, log_file)
+
+
+def _attach_to_tmux(terminal_id, tmux_name, project_path, flags, remote_host_id, log_file):
+    """Attach a PTY to an existing tmux session for WebSocket I/O streaming."""
     pid, fd = pty.fork()
 
     if pid == 0:
-        # Child process — set env vars before exec (safe: child has its own address space)
+        # Child process — exec into tmux attach
         try:
-            for key, value in claude_env.items():
-                os.environ[key] = value
-            if use_local_chdir:
-                os.chdir(project_path)
-            os.execvp(cmd[0], cmd)
+            os.environ.setdefault('TERM', 'xterm-256color')
+            os.execvp(TMUX_BIN, [TMUX_BIN, 'attach-session', '-t', tmux_name])
         except Exception as e:
-            # execvp failed - write error to stderr so parent can read it from the PTY
-            os.write(2, f"Failed to start: {e}\n".encode())
+            os.write(2, f"Failed to attach to tmux: {e}\n".encode())
             os._exit(127)
     else:
         # Parent process
@@ -1610,7 +1730,9 @@ def handle_terminal_create(data):
             'flags': flags,
             'remote_host_id': remote_host_id,
             'started': datetime.now(),
-            'ws_sid': request.sid
+            'ws_sid': request.sid,
+            'tmux_session': tmux_name,
+            'log_file': log_file,
         }
 
         # Start reader thread
@@ -1630,16 +1752,25 @@ def handle_terminal_create(data):
                 except (OSError, IOError):
                     break
 
-            # Terminal closed
+            # PTY closed — but tmux session may still be alive
             if terminal_id in active_terminals:
+                tmux_alive = _tmux_session_exists(tmux_name)
                 del active_terminals[terminal_id]
-            socketio.emit('terminal_closed', {'id': terminal_id})
+                socketio.emit('terminal_closed', {
+                    'id': terminal_id,
+                    'tmux_session': tmux_name,
+                    'tmux_alive': tmux_alive,
+                })
 
         thread = threading.Thread(target=read_terminal, daemon=True)
         thread.start()
         active_terminals[terminal_id]['thread'] = thread
 
-        emit('terminal_created', {'id': terminal_id, 'project': project_path})
+        socketio.emit('terminal_created', {
+            'id': terminal_id,
+            'project': project_path,
+            'tmux_session': tmux_name,
+        })
 
 
 @socketio.on('terminal_input')
@@ -1677,17 +1808,106 @@ def handle_terminal_resize(data):
 
 @socketio.on('terminal_kill')
 def handle_terminal_kill(data):
-    """Kill terminal session"""
+    """Kill terminal and its tmux session"""
     terminal_id = data.get('id')
+    kill_tmux = data.get('kill_tmux', True)
 
     if terminal_id in active_terminals:
-        pid = active_terminals[terminal_id]['pid']
+        term = active_terminals[terminal_id]
+        tmux_name = term.get('tmux_session')
+        pid = term['pid']
+
+        # Kill the PTY attachment
         try:
             os.kill(pid, signal.SIGTERM)
         except OSError:
             pass
+
+        # Kill the underlying tmux session if requested
+        if kill_tmux and tmux_name:
+            _tmux_kill_session(tmux_name)
+            logger.info("Killed tmux session %s", tmux_name)
+
         del active_terminals[terminal_id]
-        emit('terminal_closed', {'id': terminal_id})
+        emit('terminal_closed', {'id': terminal_id, 'tmux_killed': kill_tmux})
+
+
+@socketio.on('terminal_detach')
+def handle_terminal_detach(data):
+    """Detach from a tmux session without killing it — session persists for reconnect"""
+    terminal_id = data.get('id')
+
+    if terminal_id in active_terminals:
+        term = active_terminals[terminal_id]
+        tmux_name = term.get('tmux_session')
+        pid = term['pid']
+
+        # Kill the PTY attachment only — tmux session lives on
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            pass
+
+        del active_terminals[terminal_id]
+        emit('terminal_closed', {
+            'id': terminal_id,
+            'tmux_session': tmux_name,
+            'tmux_alive': True,
+            'detached': True,
+        })
+        logger.info("Detached from tmux session %s (terminal %s)", tmux_name, terminal_id)
+
+
+@socketio.on('terminal_reconnect')
+def handle_terminal_reconnect(data):
+    """Reconnect to an existing tmux session"""
+    tmux_name = data.get('tmux_session')
+
+    if not tmux_name or not tmux_name.startswith(TMUX_PREFIX):
+        emit('terminal_error', {'error': 'Invalid tmux session name'})
+        return
+
+    if not _tmux_session_exists(tmux_name):
+        emit('terminal_error', {'error': f'tmux session {tmux_name} no longer exists'})
+        return
+
+    # Check if already attached by another terminal
+    existing = _find_terminal_by_tmux(tmux_name)
+    if existing:
+        emit('terminal_error', {'error': f'Session {tmux_name} is already attached to terminal {existing[:8]}'})
+        return
+
+    # Check concurrent limit
+    if len(active_terminals) >= CONFIG['max_concurrent_terminals']:
+        emit('terminal_error', {'error': 'Too many concurrent terminals. Please close one first.'})
+        return
+
+    terminal_id = str(uuid.uuid4())
+    project_path = data.get('project', os.path.expanduser('~'))
+    log_file = os.path.join(AGENT_LOG_DIR, f'{tmux_name}.log')
+
+    logger.info("Reconnecting terminal %s to tmux session %s", terminal_id, tmux_name)
+    _attach_to_tmux(terminal_id, tmux_name, project_path, {}, None, log_file)
+
+
+@socketio.on('terminal_kill_tmux')
+def handle_terminal_kill_tmux(data):
+    """Kill a detached tmux session that isn't currently attached"""
+    tmux_name = data.get('tmux_session')
+
+    if not tmux_name or not tmux_name.startswith(TMUX_PREFIX):
+        emit('terminal_error', {'error': 'Invalid tmux session name'})
+        return
+
+    # Don't kill if currently attached
+    existing = _find_terminal_by_tmux(tmux_name)
+    if existing:
+        emit('terminal_error', {'error': f'Session is attached — detach or kill the terminal first'})
+        return
+
+    _tmux_kill_session(tmux_name)
+    emit('tmux_session_killed', {'tmux_session': tmux_name})
+    logger.info("Killed detached tmux session %s", tmux_name)
 
 
 @socketio.on('chat_message')
@@ -2482,15 +2702,35 @@ def api_usage():
 @app.route('/api/terminals')
 @login_required
 def api_terminals():
-    """List active terminals"""
+    """List active terminals (attached to PTY)"""
     return jsonify({
         'terminals': [
             {'id': tid, 'project': t['project'],
              'remote_host_id': t.get('remote_host_id'),
+             'tmux_session': t.get('tmux_session'),
              'started': t['started'].isoformat()}
             for tid, t in active_terminals.items()
         ]
     })
+
+
+@app.route('/api/tmux/sessions')
+@login_required
+def api_tmux_sessions():
+    """List all persistent tmux sessions (attached and detached)"""
+    tmux_sessions = _tmux_list_sessions()
+    attached_tmux = {t.get('tmux_session') for t in active_terminals.values() if t.get('tmux_session')}
+
+    result = []
+    for s in tmux_sessions:
+        result.append({
+            'name': s['name'],
+            'created': datetime.fromtimestamp(s['created']).isoformat() if s['created'] else None,
+            'attached': s['name'] in attached_tmux,
+            'pane_pid': s['pane_pid'],
+            'log_file': os.path.join(AGENT_LOG_DIR, f"{s['name']}.log"),
+        })
+    return jsonify({'sessions': result})
 
 
 # ============== Project Instructions Wizard API ==============
@@ -2762,6 +3002,7 @@ def api_status():
         'active_terminals': len(active_terminals),
         'active_chats': len(active_chat_processes),
         'loaded_sessions': len(chat_sessions),
+        'tmux_sessions': len(_tmux_list_sessions()),
         'max_terminals': CONFIG['max_concurrent_terminals'],
         'max_chats': CONFIG['max_concurrent_chats'],
         'timeout_minutes': CONFIG['process_timeout_minutes'],
@@ -2791,9 +3032,19 @@ def api_state():
     chat_statuses = {}
     for sid, sess in chat_sessions.items():
         chat_statuses[sid] = sess.get('status', 'ready')
+
+    # Include persistent tmux sessions available for reconnect
+    tmux_sessions = _tmux_list_sessions()
+    attached_tmux = {t.get('tmux_session') for t in active_terminals.values() if t.get('tmux_session')}
+    detached_sessions = [
+        {'name': s['name'], 'created': s['created']}
+        for s in tmux_sessions if s['name'] not in attached_tmux
+    ]
+
     return jsonify({
         'active_terminal_ids': terminal_ids,
-        'chat_sessions': chat_statuses
+        'chat_sessions': chat_statuses,
+        'detached_tmux_sessions': detached_sessions,
     })
 
 

@@ -617,6 +617,9 @@ class ClaudeCodeWeb {
                 document.getElementById('btn-send-chat').disabled = false;
             }
             this._wasConnected = true;
+
+            // Check for detached tmux sessions to reconnect
+            this._checkDetachedSessions();
         });
 
         this.socket.on('disconnect', (reason) => {
@@ -629,7 +632,7 @@ class ClaudeCodeWeb {
 
         // Terminal events
         this.socket.on('terminal_created', (data) => {
-            this._addTerminalTab(data.id, data.project);
+            this._addTerminalTab(data.id, data.project, data.tmux_session);
         });
 
         this.socket.on('terminal_output', (data) => {
@@ -642,10 +645,25 @@ class ClaudeCodeWeb {
         this.socket.on('terminal_closed', (data) => {
             const term = this.terminals[data.id];
             if (term) {
-                term.terminal.write('\r\n\x1b[33m[Terminal session ended]\x1b[0m\r\n');
+                if (data.tmux_alive && !data.tmux_killed) {
+                    const tmuxName = data.tmux_session || term.tmux_session || '';
+                    term.terminal.write('\r\n\x1b[36m[Detached from tmux session: ' + tmuxName + ']\x1b[0m\r\n');
+                    term.terminal.write('\x1b[36m[Session is still running — reconnect anytime]\x1b[0m\r\n');
+                } else {
+                    term.terminal.write('\r\n\x1b[33m[Terminal session ended]\x1b[0m\r\n');
+                }
                 term.closed = true;
                 this.renderTerminalTabs();
             }
+            // Show reconnect banner if tmux session persists (outside if-term since closeTerminalTab may have already removed it)
+            if (data.tmux_alive && !data.tmux_killed) {
+                this._checkDetachedSessions();
+            }
+        });
+
+        this.socket.on('tmux_session_killed', (data) => {
+            this.showToast(`tmux session ${data.tmux_session} terminated`, 'info');
+            this._checkDetachedSessions();
         });
 
         // Chat events
@@ -971,6 +989,7 @@ class ClaudeCodeWeb {
         // Tooltips (global delegated handler)
         let tipPopup = null;
         document.addEventListener('mouseenter', (e) => {
+            if (!e.target.closest) return;
             const tip = e.target.closest('.tip');
             if (!tip || !tip.dataset.tip) return;
             if (tipPopup) tipPopup.remove();
@@ -995,7 +1014,7 @@ class ClaudeCodeWeb {
             tipPopup.style.left = left + 'px';
         }, true);
         document.addEventListener('mouseleave', (e) => {
-            if (e.target.closest('.tip') && tipPopup) {
+            if (e.target.closest && e.target.closest('.tip') && tipPopup) {
                 tipPopup.remove();
                 tipPopup = null;
             }
@@ -1311,21 +1330,26 @@ class ClaudeCodeWeb {
             }
         });
 
-        return { terminal, fitAddon, container, project, closed: false };
+        return { terminal, fitAddon, container, project, closed: false, tmux_session: null };
     }
 
-    _addTerminalTab(terminalId, project) {
+    _addTerminalTab(terminalId, project, tmuxSession) {
         // Remove welcome message if present
         const welcome = this.elements.terminalContainer.querySelector('.terminal-welcome');
         if (welcome) welcome.remove();
 
         const termData = this._createTerminalInstance(terminalId, project);
+        termData.tmux_session = tmuxSession || null;
         this.terminals[terminalId] = termData;
         this.switchTerminalTab(terminalId);
         this.renderTerminalTabs();
 
         const projectName = project.split('/').pop() || project;
-        termData.terminal.write(`\x1b[36mConnected: ${projectName}\x1b[0m\r\n`);
+        if (tmuxSession) {
+            termData.terminal.write(`\x1b[36mConnected: ${projectName} [tmux: ${tmuxSession}]\x1b[0m\r\n`);
+        } else {
+            termData.terminal.write(`\x1b[36mConnected: ${projectName}\x1b[0m\r\n`);
+        }
     }
 
     switchTerminalTab(terminalId) {
@@ -1353,13 +1377,26 @@ class ClaudeCodeWeb {
         this.renderTerminalTabs();
     }
 
-    closeTerminalTab(terminalId) {
+    async closeTerminalTab(terminalId) {
         const term = this.terminals[terminalId];
         if (!term) return;
 
-        // Kill if still running
-        if (!term.closed) {
-            this.socket.emit('terminal_kill', { id: terminalId });
+        // If still running and has a tmux session, offer detach vs kill
+        if (!term.closed && term.tmux_session) {
+            const choice = await this.confirm(
+                'Close Terminal',
+                'Detach (keep session running for reconnect) or Kill (terminate session)?',
+                'Kill', 'danger', 'Detach'
+            );
+            if (choice) {
+                // Kill = terminate tmux session
+                this.socket.emit('terminal_kill', { id: terminalId, kill_tmux: true });
+            } else {
+                // Detach = keep tmux alive
+                this.socket.emit('terminal_detach', { id: terminalId });
+            }
+        } else if (!term.closed) {
+            this.socket.emit('terminal_kill', { id: terminalId, kill_tmux: true });
         }
 
         // Dispose xterm and remove container
@@ -1444,8 +1481,99 @@ class ClaudeCodeWeb {
     killTerminal(terminalId = null) {
         const id = terminalId || this.activeTerminalId;
         if (id && this.terminals[id] && !this.terminals[id].closed) {
-            this.socket.emit('terminal_kill', { id: id });
+            this.socket.emit('terminal_kill', { id: id, kill_tmux: true });
         }
+    }
+
+    async _checkDetachedSessions() {
+        /**Check for detached tmux sessions and offer reconnection.*/
+        try {
+            const resp = await fetch('/api/tmux/sessions');
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const detached = (data.sessions || []).filter(s => !s.attached);
+            if (detached.length === 0) return;
+
+            // Show reconnect banner
+            this._showTmuxReconnectBanner(detached);
+        } catch (e) {
+            // Silently fail — not critical
+        }
+    }
+
+    _showTmuxReconnectBanner(sessions) {
+        /**Show a banner with detached tmux sessions available for reconnect.*/
+        // Remove existing banner if any
+        const existing = document.getElementById('tmux-reconnect-banner');
+        if (existing) existing.remove();
+
+        const banner = document.createElement('div');
+        banner.id = 'tmux-reconnect-banner';
+        banner.className = 'tmux-reconnect-banner';
+
+        const count = sessions.length;
+        const label = count === 1 ? '1 persistent session' : `${count} persistent sessions`;
+
+        banner.innerHTML = `
+            <div class="tmux-banner-content">
+                <span class="tmux-banner-icon">&#9654;</span>
+                <span class="tmux-banner-text">${label} available for reconnect</span>
+                <div class="tmux-banner-sessions">
+                    ${sessions.map(s => `
+                        <button class="tmux-reconnect-btn" data-tmux="${s.name}" title="Created: ${s.created || 'unknown'}">
+                            ${s.name}
+                        </button>
+                    `).join('')}
+                </div>
+                <button class="tmux-banner-dismiss" title="Dismiss">&times;</button>
+            </div>
+        `;
+
+        // Insert at top of terminal container area
+        const termArea = document.querySelector('.terminal-area') || document.getElementById('terminal-container');
+        if (termArea && termArea.parentNode) {
+            termArea.parentNode.insertBefore(banner, termArea);
+        }
+
+        // Event delegation for reconnect buttons
+        banner.addEventListener('click', (e) => {
+            const reconnectBtn = e.target.closest('.tmux-reconnect-btn');
+            if (reconnectBtn) {
+                const tmuxName = reconnectBtn.dataset.tmux;
+                this.reconnectTmuxSession(tmuxName);
+                reconnectBtn.disabled = true;
+                reconnectBtn.textContent = 'Connecting...';
+                return;
+            }
+            if (e.target.classList.contains('tmux-banner-dismiss')) {
+                banner.remove();
+            }
+        });
+    }
+
+    reconnectTmuxSession(tmuxName) {
+        /**Reconnect to a detached tmux session.*/
+        this.socket.emit('terminal_reconnect', {
+            tmux_session: tmuxName,
+            project: this.selectedProject || '/opt/claude-web',
+        });
+
+        // Remove from banner
+        setTimeout(() => {
+            const banner = document.getElementById('tmux-reconnect-banner');
+            if (banner) {
+                const btn = banner.querySelector(`[data-tmux="${tmuxName}"]`);
+                if (btn) btn.remove();
+                // Remove banner if no more sessions
+                const remaining = banner.querySelectorAll('.tmux-reconnect-btn');
+                if (remaining.length === 0) banner.remove();
+            }
+        }, 1000);
+    }
+
+    killTmuxSession(tmuxName) {
+        /**Kill a detached tmux session without reconnecting.*/
+        this.socket.emit('terminal_kill_tmux', { tmux_session: tmuxName });
     }
 
     // ============== Chat ==============
@@ -1755,7 +1883,7 @@ class ClaudeCodeWeb {
 
     // ============== Confirm Dialog ==============
 
-    confirm(title, message, confirmLabel = 'Confirm', type = 'danger') {
+    confirm(title, message, confirmLabel = 'Confirm', type = 'danger', cancelLabel = 'Cancel') {
         return new Promise((resolve) => {
             const safeType = ['danger', 'warning', 'info', 'success'].includes(type) ? type : 'danger';
             const overlay = document.createElement('div');
@@ -1765,7 +1893,7 @@ class ClaudeCodeWeb {
                     <div class="confirm-title">${this._escapeHtml(title)}</div>
                     <div class="confirm-message">${this._escapeHtml(message)}</div>
                     <div class="confirm-actions">
-                        <button class="confirm-btn cancel">Cancel</button>
+                        <button class="confirm-btn cancel">${this._escapeHtml(cancelLabel)}</button>
                         <button class="confirm-btn ${safeType}">${this._escapeHtml(confirmLabel)}</button>
                     </div>
                 </div>
