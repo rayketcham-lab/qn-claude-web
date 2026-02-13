@@ -94,12 +94,12 @@
                 <label class="flag-option">
                     <input type="checkbox" id="flag-resume">
                     <span>-r</span> Resume last conversation
-                    <span class="tip" data-tip="Resumes the most recent conversation from where it left off. Useful for picking up interrupted work.">?</span>
+                    <span class="tip" data-tip="Resumes the most recent conversation exactly where it left off, restoring the full context. Claude sees everything from the previous session.">?</span>
                 </label>
                 <label class="flag-option">
                     <input type="checkbox" id="flag-continue">
                     <span>-c</span> Continue conversation
-                    <span class="tip" data-tip="Continues the most recent conversation by adding to it, rather than starting a new one.">?</span>
+                    <span class="tip" data-tip="Starts a new conversation but pre-loads a summary of the most recent session. Useful when the previous context is too large or you want a fresh start with some history.">?</span>
                 </label>
                 <label class="flag-option">
                     <input type="checkbox" id="flag-verbose">
@@ -115,7 +115,7 @@
                     <textarea id="flag-print-prompt" rows="2" maxlength="10000" placeholder="Enter prompt for one-shot query..."></textarea>
                 </div>
                 <div class="launch-select">
-                    <label>Permissions: <span class="tip" data-tip="Controls what Claude is allowed to do without asking. 'Default' prompts for each action. 'Accept Edits' auto-approves file edits. 'Plan Only' blocks all changes. 'Don't Ask' auto-approves most actions. 'Bypass All' skips all permission checks.">?</span></label>
+                    <label>Permissions: <span class="tip" data-tip="Controls what Claude can do without asking permission. Default: prompts for each action. Accept Edits: auto-approves file reads and writes but asks for shell commands. Plan: Claude can only read and suggest — no writes or commands. Don't Ask: auto-approves everything except destructive operations. Bypass All: no permission checks at all (use with caution).">?</span></label>
                     <select id="flag-permission-mode">
                         <option value="">Default</option>
                         <option value="acceptEdits">Accept Edits</option>
@@ -150,7 +150,7 @@
                         <label class="flag-option">
                             <input type="checkbox" id="flag-agent-teams">
                             <span>Agent Teams</span> Deploy agents on launch
-                            <span class="tip" data-tip="Enables the multi-agent team system. Selected agent definitions (.md files) are deployed to the project's .claude/agents/ directory on launch. Sentinel (context watchdog) is always active.">?</span>
+                            <span class="tip" data-tip="Enables the multi-agent team system. Selected agent definitions (.md files) are deployed to the project's .claude/agents/ directory on launch. If none are selected, defaults to the core team (architect, builder, tester, secops, devops). Sentinel (context watchdog) is always active.">?</span>
                         </label>
                         <div id="sidebar-agents-summary" class="sidebar-agents-summary hidden">
                             <div id="sidebar-agents-list" class="sidebar-agents-list">
@@ -200,7 +200,7 @@
                         <textarea id="flag-add-dirs" rows="2" placeholder="One path per line..."></textarea>
                     </div>
                     <div class="launch-field">
-                        <label>MCP Config File: <span class="tip" data-tip="Path to a Model Context Protocol (MCP) config JSON file. MCP servers extend Claude with custom tools like database access, API integrations, or specialized capabilities. See Claude docs for MCP server setup.">?</span></label>
+                        <label>MCP Config File: <span class="tip" data-tip="Optional. Claude Code automatically loads MCP servers from ~/.claude/settings.json and your project's .claude/settings.json. Only use this field to load an additional MCP config file beyond those standard locations. Leave blank if your MCP servers are already configured in your Claude settings.">?</span></label>
                         <input type="text" id="flag-mcp-config" placeholder="/path/to/mcp-config.json" autocomplete="off">
                     </div>
                 </div>

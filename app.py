@@ -44,7 +44,7 @@ logging.basicConfig(
 logger = logging.getLogger('qnca')
 
 # Version info
-VERSION = "1.4.1"
+VERSION = "1.5.0"
 START_TIME = datetime.now()
 
 # ============== Rate Limiting ==============

@@ -2,6 +2,27 @@
 
 All notable changes to QN Code Assistant.
 
+## [1.5.0] - 2026-02-13
+
+### Added
+- **Persistent tmux terminal sessions** - Terminal sessions survive page reloads and reconnects via tmux detach/reattach
+- **Standardized Claude Code config** - Sync agents and utility commands across projects from centralized config
+
+### Security
+- **Thread-safe terminal access** - `active_terminals_lock` on all 14 read/mutation sites prevents race conditions
+- **Tmux name validation** - Session names must match `^qn-[a-f0-9]{8}\Z` pattern; rejects injection attempts
+- **Max tmux session limit** - Configurable cap (default 10) prevents resource exhaustion
+- **Tmux user binding** - Sessions bound to QN_OWNER env var; prevents cross-user access
+- **API response stripping** - Internal fields (log_file, pane_pid) removed from API responses
+- **Dead session reaping** - Automatic cleanup of tmux sessions older than configurable threshold (default 24h)
+- **Generic error messages** - No internal paths or stack traces leaked to clients
+- **Log directory permissions** - Set to 0o700 on startup
+- **Systemd hardening** - KillMode=process prevents orphaned child processes
+
+### Changed
+- **Sentinel protocol refactored** - Changed from background agent model to self-discipline protocol embedded in all agents
+- **Improved launch option tooltips** - Clearer descriptions for MCP Config (explains auto-discovery), Resume vs Continue, Permissions modes, and Agent Teams
+
 ## [1.4.1] - 2026-02-12
 
 ### Fixed
