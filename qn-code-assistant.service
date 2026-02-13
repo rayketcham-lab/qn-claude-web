@@ -20,6 +20,7 @@ WorkingDirectory=/opt/claude-web
 ExecStart=/usr/bin/python3 /opt/claude-web/app.py
 Restart=on-failure
 RestartSec=5
+KillMode=process
 Environment=PYTHONUNBUFFERED=1
 Environment=CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
 
