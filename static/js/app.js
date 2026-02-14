@@ -109,6 +109,9 @@ class ClaudeCodeWeb {
             addDirs: document.getElementById('flag-add-dirs'),
             mcpConfig: document.getElementById('flag-mcp-config'),
             agentTeams: document.getElementById('flag-agent-teams'),
+            autonomous: document.getElementById('flag-autonomous'),
+            autonomousTask: document.getElementById('flag-autonomous-task'),
+            autoRestart: document.getElementById('flag-auto-restart'),
         };
 
         this.init();
@@ -878,6 +881,23 @@ class ClaudeCodeWeb {
         document.getElementById('flag-agent-teams').addEventListener('change', (e) => {
             const summary = document.getElementById('sidebar-agents-summary');
             if (summary) summary.classList.toggle('hidden', !e.target.checked);
+        });
+
+        // Autonomous Mode toggle
+        document.getElementById('flag-autonomous').addEventListener('change', (e) => {
+            document.getElementById('autonomous-task-wrap').classList.toggle('hidden', !e.target.checked);
+            if (e.target.checked) {
+                // Auto-set optimal autonomous flags
+                this.flags.permissionMode.value = 'bypassPermissions';
+                this.flags.autocompactThreshold.value = '80';
+                this.flags.extendedThinking.checked = true;
+                document.getElementById('thinking-tokens-wrap').classList.remove('hidden');
+                this.flags.agentTeams.checked = true;
+                const summary = document.getElementById('sidebar-agents-summary');
+                if (summary) summary.classList.remove('hidden');
+                // Load /go command content into textarea
+                this._loadGoCommand();
+            }
         });
 
         // Open agents modal from sidebar
@@ -3721,6 +3741,28 @@ class ClaudeCodeWeb {
 
     // ============== Utilities ==============
 
+    async _loadGoCommand() {
+        const textarea = this.flags.autonomousTask;
+        // Don't overwrite user edits
+        if (textarea.dataset.isDefault !== 'true' && textarea.value.trim()) return;
+        try {
+            const res = await fetch('/api/autonomous/go-command');
+            if (res.ok) {
+                const data = await res.json();
+                textarea.value = data.content || '';
+                textarea.dataset.isDefault = 'true';
+            }
+        } catch {
+            // Fallback if endpoint unavailable
+            if (!textarea.value.trim()) {
+                textarea.value = 'Resume work from the previous session. Check MEMORY.md for saved state, assess what needs to be done, and work autonomously.';
+                textarea.dataset.isDefault = 'true';
+            }
+        }
+        // Mark as user-edited on any input
+        textarea.addEventListener('input', () => { textarea.dataset.isDefault = 'false'; }, { once: true });
+    }
+
     getFlags() {
         const effortBtn = this.flags.effortLevel?.querySelector('.toggle-btn.active');
         const effortLevel = effortBtn ? effortBtn.dataset.value : 'high';
@@ -3750,6 +3792,9 @@ class ClaudeCodeWeb {
             add_dirs: this.flags.addDirs.value.trim() || null,
             mcp_config: this.flags.mcpConfig.value.trim() || null,
             agent_teams: this.flags.agentTeams?.checked || false,
+            autonomous: this.flags.autonomous?.checked || false,
+            autonomous_task: this.flags.autonomousTask?.value?.trim() || null,
+            auto_restart: this.flags.autoRestart?.checked || false,
         };
     }
 

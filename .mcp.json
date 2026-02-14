@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "context-store": {
+      "type": "stdio",
+      "command": "/home/pleb/.claude/mcp-venv/bin/python3",
+      "args": ["/home/pleb/.claude/mcp-servers/context-store.py"],
+      "env": {}
+    }
+  }
+}

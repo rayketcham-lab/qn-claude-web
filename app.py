@@ -1735,6 +1735,21 @@ def handle_terminal_create(data):
             (h for h in CONFIG.get('remote_hosts', []) if h['id'] == remote_host_id), None
         )
 
+    # Autonomous mode: force-set flags for fully autonomous operation
+    autonomous_task = None
+    auto_restart = False
+    if flags.get('autonomous'):
+        flags['permission_mode'] = 'bypassPermissions'
+        flags['autocompact_threshold'] = 80
+        flags['extended_thinking'] = True
+        flags['agent_teams'] = True
+        # Clear resume/continue — autonomous task is a fresh prompt
+        flags['resume'] = False
+        flags['continue'] = False
+        autonomous_task = str(flags.get('autonomous_task', ''))[:10000].strip()
+        auto_restart = bool(flags.get('auto_restart'))
+        logger.info("Autonomous mode enabled (auto_restart=%s, task_len=%d)", auto_restart, len(autonomous_task or ''))
+
     # Deploy agents if agent teams enabled (local only)
     if flags.get('agent_teams') and not remote_host_id:
         try:
@@ -1746,7 +1761,8 @@ def handle_terminal_create(data):
             logger.error("Agent deploy failed: %s", e)
 
     # Build command and environment (SSH-wrapped if remote)
-    cmd = build_claude_command(project_path, flags, remote_host=remote_host)
+    prompt = autonomous_task if autonomous_task else None
+    cmd = build_claude_command(project_path, flags, prompt=prompt, remote_host=remote_host)
     claude_env = build_claude_env(flags)
 
     # For SSH mode, don't chdir locally. For local/mount, chdir to project path
@@ -1766,6 +1782,11 @@ def handle_terminal_create(data):
         tmux_shell_cmd = f'{unset_prefix}cd {shlex.quote(project_path)} && {env_prefix}{quoted_cmd}'
     else:
         tmux_shell_cmd = f'{unset_prefix}{env_prefix}{quoted_cmd}'
+
+    # Auto-restart loop: wrap command so Claude restarts after exit
+    if auto_restart:
+        restart_msg = r'\033[33m[Claude exited — restarting in 3s. Press Ctrl+C to stop.]\033[0m'
+        tmux_shell_cmd = f'while true; do {tmux_shell_cmd}; echo -e "{restart_msg}"; sleep 3; done'
 
     # Create the tmux session (detached)
     tmux_result = subprocess.run(
@@ -2515,6 +2536,22 @@ def api_list_files():
         parent = None
 
     return jsonify({'items': items, 'path': path, 'parent': parent})
+
+
+@app.route('/api/autonomous/go-command')
+@login_required
+def api_autonomous_go_command():
+    """Return the content of .claude/commands/go.md for the autonomous mode task textarea.
+    This endpoint is needed because the app directory is excluded from validate_file_path()."""
+    go_path = os.path.join(APP_DIR, '.claude', 'commands', 'go.md')
+    try:
+        with open(go_path, 'r') as f:
+            content = f.read()
+        return jsonify({'content': content})
+    except FileNotFoundError:
+        return jsonify({'content': '', 'error': 'go.md not found'}), 404
+    except OSError:
+        return jsonify({'error': 'Failed to read go.md'}), 500
 
 
 @app.route('/api/files/read')

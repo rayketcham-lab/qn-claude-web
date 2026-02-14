@@ -85,9 +85,9 @@ Action: [proceed / compact first / save state and suggest new session]
 
 ## End-of-Session
 If RED and already compacted once:
-1. Write full session state to auto memory MEMORY.md
+1. Write full session state to auto memory MEMORY.md (include `## Task Status: IN_PROGRESS`)
 2. Commit any pending changes
-3. Tell user: "Session state saved to MEMORY.md. Pick up in new session."
+3. Tell user: "Session state saved to MEMORY.md. Type /go in next session to resume."
 
 Never silently degrade. Bad code from context exhaustion is worse than pausing.
 

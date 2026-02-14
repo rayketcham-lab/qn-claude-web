@@ -22,6 +22,45 @@ There is no background watchdog. YOU are the only process. Full protocol: `.clau
 
 On session start, ALWAYS check MEMORY.md for previous session state and resume from where it left off.
 
+
+## Autonomous Work Mode
+
+When given a task, work autonomously. Do not narrate plans or ask for permission to continue — just do the work.
+
+### Decision Points — Use AskUserQuestion
+When you encounter a decision point, design choice, trade-off, or ambiguity, present it as a **structured choice** using the AskUserQuestion tool:
+
+- Provide 2-4 concrete options with clear descriptions of trade-offs
+- Mark your recommended option with "(Recommended)" in the label
+- Frame what each choice means for the project (performance, complexity, maintenance, etc.)
+- After the user picks, immediately execute — don't re-explain
+
+**Good question examples:**
+- "Which state management approach?" with complexity/perf trade-offs
+- "Found two ways to fix this bug" with risk/scope trade-offs
+- "This feature could be simple or full-featured" with effort/capability trade-offs
+
+**Bad patterns (avoid):**
+- "Should I proceed?" — just proceed
+- "Would you like me to continue?" — just continue
+- "Is this okay?" — if you're not sure, present specific options for what to change
+- Open-ended "What do you think?" — frame it as concrete choices instead
+
+### Task Status Markers
+When working in autonomous mode, maintain a `## Task Status:` line in MEMORY.md:
+- `IN_PROGRESS` — actively working, will resume on restart
+- `TASK_COMPLETE` — all done, builds, tests pass, deliverable ready
+- `BLOCKED` — cannot continue without human help (explain why below the marker)
+
+### Context Store Integration
+Use the MCP context-store to persist important discoveries, decisions, and architectural knowledge:
+- `mcp__context-store__store_context` — save project knowledge that should survive across sessions
+- `mcp__context-store__search_context` — look up previously stored knowledge before re-exploring
+- `mcp__context-store__record_decision` — record architectural decisions with rationale
+- `mcp__context-store__project_summary` — get full project context on session start
+
+Always check the context-store before deep-diving into code you may have already explored in a previous session.
+
 ---
 
 ## Team Agent Architecture
