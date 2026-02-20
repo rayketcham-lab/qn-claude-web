@@ -6,7 +6,7 @@
  */
 
 // Version for cache-busting verification
-const APP_VERSION = '1.5.17';
+const APP_VERSION = '1.5.1';
 const DEBUG_MODE = false;  // Set to false to disable verbose logging
 const log = (...args) => DEBUG_MODE && console.log('[QN]', new Date().toISOString().substr(11, 12), ...args);
 const logError = (...args) => console.error('[QN ERROR]', new Date().toISOString().substr(11, 12), ...args);

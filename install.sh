@@ -25,18 +25,18 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-VERSION="1.5.0"
+VERSION="1.5.1"
 
 # SHA-256 hashes baked at build time
 declare -A FILE_HASHES=(
-    ["app.py"]="4acc7ecdd4b29c9b8531da1f49275e269ea8cf787007f5a2165472f1c67d14e2"
-    ["static/js/app.js"]="fdfd0783b1df291bb390cea28c8d472219115d956f5b8eed38a822dc34d567dc"
+    ["app.py"]="d3542979b27994b423c6011ef7c9ed0f1ba98b4d4f7294725ab42f239a1f625c"
+    ["static/js/app.js"]="0650a346352809798d890bdc77492b18731e731241d6818b525dd5e2096707c5"
     ["static/css/style.css"]="5fb199bc175bef59b5cb4efa14882975385f7dd443535f575159e1863542b9c8"
-    ["templates/index.html"]="d9b624d21e79104f4a3886411a248e9572b76975d4f2f90cf8d90d5875abb46f"
+    ["templates/index.html"]="80869d43301945df2d1563d2791706b6475b8a86873c93be840eaec78426ddfb"
     ["templates/login.html"]="5e77d824bad5af53a817ea7cf554992cb1d77e2050a41bd0add00880d5454aac"
     ["requirements.txt"]="4122e97cfa01caa3042e3d3b3e35a778a9e658c84a62a31177f19c041785c8d5"
     ["static/manifest.json"]="c2872d517d42875cd02f0dfdb5e9a8d79522097dd1b016450fc3afe59cace431"
-    ["static/sw.js"]="647c574cdc8abaff4f1dae69c68f7ca8616a55f38cef12d79e31db5959b83475"
+    ["static/sw.js"]="dd99f2f9ead0c3efd1067724e76939e297632f3d959f3522cc33c54601373402"
     ["static/icon.svg"]="62f098e754f05bc584ef68b681141961ed172a072bf10ab9e494356df27ce034"
     ["apache-proxy.conf"]="5eab0edd895142e586693d410f82146cea4fd7dc0327c684cbf4b80c65fda248"
     ["maintenance.sh"]="69cb8b8938771c83b810d4736113bb1dfdb4a225d83858eb3e475a284ae0ecdc"

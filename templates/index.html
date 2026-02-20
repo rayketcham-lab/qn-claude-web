@@ -23,7 +23,7 @@
 
     <!-- Ace Editor loaded on-demand by app.js when user clicks Edit -->
 
-    <link rel="stylesheet" href="/static/css/style.css?v=1.5.6">
+    <link rel="stylesheet" href="/static/css/style.css?v=1.5.1">
     <link rel="manifest" href="/static/manifest.json">
     <link rel="icon" type="image/svg+xml" href="/static/icon.svg">
     <meta name="theme-color" content="#da7756">
@@ -848,14 +848,14 @@
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=1.5.6"></script>
+    <script src="/static/js/app.js?v=1.5.1"></script>
     <script>
         // Unregister old service workers and register new one
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.getRegistrations().then(registrations => {
                 registrations.forEach(r => r.unregister());
             }).then(() => {
-                navigator.serviceWorker.register('/static/sw.js?v=1.5.6').catch(() => {});
+                navigator.serviceWorker.register('/static/sw.js?v=1.5.1').catch(() => {});
             });
         }
     </script>

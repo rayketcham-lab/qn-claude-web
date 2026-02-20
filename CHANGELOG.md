@@ -2,6 +2,22 @@
 
 All notable changes to QN Code Assistant.
 
+## [1.5.1] - 2026-02-20
+
+### Fixed
+- **Phantom session buildup** — SocketIO reconnection churn caused the disconnect handler to immediately kill PTY attachments, leaving orphaned tmux sessions that piled up across devices. Added a 30-second disconnect grace period: if the same browser reconnects within the window, terminals stay attached seamlessly with no detach/reconnect churn.
+- **`crypto.randomUUID()` on plain HTTP** — Browser ID generation crashed on non-HTTPS connections (secure context required). Added fallback UUID generator for plain HTTP access.
+
+### Changed
+- **SocketIO ping timeout increased** — Raised from 20s (default) to 60s, reducing false disconnects on flaky networks
+- **Browser ID correlation** — Stable browser ID (via `sessionStorage`) sent on every SocketIO connect, enabling the server to match reconnections to the same browser tab
+- **Debounced detached session check** — `_checkDetachedSessions()` now waits 3s after reconnect before checking, preventing banner flicker during reconnection storms
+
+### Improved
+- **Terminal output** — DA response filtering, rate-limited output buffering at 60fps, scrollback limits
+- **Cache busting** — Versioned static asset URLs, service worker cache cleanup on update
+- **Highlight.js** — Switched to full browser bundle (auto language detection vs manual per-language imports)
+
 ## [1.5.0] - 2026-02-13
 
 ### Added

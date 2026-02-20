@@ -1,5 +1,5 @@
 // QN Code Assistant - Service Worker
-const CACHE_NAME = 'qn-code-assistant-v1.5.17';
+const CACHE_NAME = 'qn-code-assistant-v1.5.1';
 const STATIC_ASSETS = [
   '/',
   '/static/css/style.css',
