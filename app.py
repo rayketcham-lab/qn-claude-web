@@ -33,7 +33,8 @@ from flask_socketio import SocketIO, emit
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins=None, async_mode='threading')
+socketio = SocketIO(app, cors_allowed_origins=None, async_mode='threading',
+                    ping_timeout=60, ping_interval=25)
 
 # Logging
 logging.basicConfig(
@@ -46,6 +47,11 @@ logger = logging.getLogger('qnca')
 # Version info
 VERSION = "1.5.0"
 START_TIME = datetime.now()
+
+# Regex to filter out DA (Device Attributes) query responses that cause terminal display garbage
+# These are responses like ESC[?1;2c (DA1) and ESC[>0;276;0c (DA2)
+# Also filter literal ^[[?...c (caret notation) versions that come from echoed input
+DA_RESPONSE_FILTER = re.compile(r'\x1b\[\?[\d;]*c|\x1b\[>[\d;]*c|\^\[\[\?[\d;]*c|\^\[\[>[\d;]*c')
 
 # ============== Rate Limiting ==============
 # Simple in-memory rate limiter: {endpoint_key: [(timestamp, ip), ...]}
@@ -194,7 +200,7 @@ def add_security_headers(response):
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.socket.io; "
         "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-        "connect-src 'self' ws: wss:; "
+        "connect-src 'self' http: https: ws: wss:; "
         "img-src 'self' data:; "
         "font-src 'self'; "
         "frame-ancestors 'self'"
@@ -273,6 +279,12 @@ active_chat_processes = {}
 # Chat sessions storage: {session_id: {'messages': [], 'project': str, 'flags': []}}
 chat_sessions = {}
 chat_sessions_lock = threading.Lock()
+
+# Disconnect grace period — transient reconnections don't kill PTY
+DISCONNECT_GRACE_SECS = 30
+pending_disconnects = {}        # ws_sid -> threading.Timer
+pending_disconnect_lock = threading.Lock()
+browser_to_sid = {}             # browser_id -> ws_sid
 
 # Watchdog thread
 watchdog_running = True
@@ -469,6 +481,12 @@ def shutdown_cleanup():
     global watchdog_running
     watchdog_running = False
     logger.info("Cleaning up processes (tmux sessions will persist)...")
+
+    # Cancel pending disconnect grace timers
+    with pending_disconnect_lock:
+        for timer in pending_disconnects.values():
+            timer.cancel()
+        pending_disconnects.clear()
 
     # Save all sessions
     backup_all_sessions()
@@ -915,9 +933,9 @@ def build_claude_command(project_path, flags, prompt=None, remote_host=None):
                 ssh_cmd.extend(['-i', expanded_key])
             else:
                 logger.warning("SSH key file not found: %s, falling back to default keys", expanded_key)
-        # Allocate PTY for interactive terminal sessions
-        if not prompt:
-            ssh_cmd.append('-t')
+        # Always allocate PTY for terminal sessions (both interactive and autonomous)
+        # -tt forces PTY allocation even when stdin is not a terminal
+        ssh_cmd.append('-tt')
         ssh_cmd.append(f"{ssh_username}@{ssh_hostname}")
         ssh_cmd.append(remote_cmd)
         return ssh_cmd
@@ -1675,29 +1693,78 @@ def load_session(session_id):
 
 @socketio.on('connect')
 def handle_connect():
-    """Handle client connection"""
+    """Handle client connection — cancel pending disconnect grace if same browser reconnects"""
     auth_config = CONFIG.get('auth', {})
     if auth_config.get('enabled', False) and not session.get('authenticated'):
         return False  # Reject unauthenticated SocketIO connections
+
+    new_sid = request.sid
+    browser_id = request.args.get('browser_id', '')
+
+    if browser_id:
+        old_sid = None
+        with pending_disconnect_lock:
+            old_sid = browser_to_sid.get(browser_id)
+            if old_sid and old_sid in pending_disconnects:
+                pending_disconnects.pop(old_sid).cancel()
+                logger.info("Reconnect from browser %s — cancelled disconnect grace (old=%s, new=%s)",
+                            browser_id[:8], old_sid[:12], new_sid[:12])
+            browser_to_sid[browser_id] = new_sid
+
+        # Re-associate terminals from old SID to new SID
+        if old_sid and old_sid != new_sid:
+            with active_terminals_lock:
+                for tid, term in active_terminals.items():
+                    if term.get('ws_sid') == old_sid:
+                        term['ws_sid'] = new_sid
+                        logger.info("Terminal %s re-associated to new SID", tid[:8])
+
     emit('connected', {'status': 'ok'})
 
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    """Handle client disconnection - detach PTY but preserve tmux sessions"""
+    """Handle client disconnection with grace period for transient reconnects.
+
+    Instead of immediately killing PTY attachments, start a timer. If the same
+    browser reconnects within DISCONNECT_GRACE_SECS, the timer is cancelled and
+    terminals remain attached — no detach/reconnect churn.
+    """
     sid = request.sid
+
+    # Only start grace timer if this SID owns any terminals
     with active_terminals_lock:
-        for tid, term in list(active_terminals.items()):
-            if term.get('ws_sid') == sid:
-                tmux_name = term.get('tmux_session')
-                # Kill the PTY attachment only — tmux session persists
-                try:
-                    os.kill(term['pid'], signal.SIGTERM)
-                except OSError:
-                    pass
-                active_terminals.pop(tid, None)
-                if tmux_name:
-                    logger.info("Client disconnected — tmux session %s persists", tmux_name)
+        has_terminals = any(t.get('ws_sid') == sid for t in active_terminals.values())
+
+    if not has_terminals:
+        return
+
+    def _expire_disconnect():
+        """Grace period expired — detach terminals for real."""
+        with pending_disconnect_lock:
+            pending_disconnects.pop(sid, None)
+            # Clean up browser mapping if it still points to this expired SID
+            for bid, bsid in list(browser_to_sid.items()):
+                if bsid == sid:
+                    del browser_to_sid[bid]
+
+        with active_terminals_lock:
+            for tid, term in list(active_terminals.items()):
+                if term.get('ws_sid') == sid:
+                    tmux_name = term.get('tmux_session')
+                    try:
+                        os.kill(term['pid'], signal.SIGTERM)
+                    except OSError:
+                        pass
+                    active_terminals.pop(tid, None)
+                    if tmux_name:
+                        logger.info("Disconnect grace expired — detached tmux %s", tmux_name)
+
+    timer = threading.Timer(DISCONNECT_GRACE_SECS, _expire_disconnect)
+    with pending_disconnect_lock:
+        pending_disconnects[sid] = timer
+    timer.start()
+    logger.info("Client disconnected (sid=%s) — %ds grace period started", sid[:12], DISCONNECT_GRACE_SECS)
 
 
 @socketio.on('terminal_create')
@@ -1814,6 +1881,9 @@ def handle_terminal_create(data):
 
     logger.info("Created tmux session %s for terminal %s (project: %s, owner: %s)", tmux_name, terminal_id, project_path, owner or 'anonymous')
 
+    # Clear scrollback before attach to prevent flood from history replay
+    subprocess.run([TMUX_BIN, 'clear-history', '-t', tmux_name], capture_output=True)
+
     # Now attach to the tmux session via PTY (this is the WebSocket I/O layer)
     _attach_to_tmux(terminal_id, tmux_name, project_path, flags, remote_host_id, log_file, request.sid)
 
@@ -1846,6 +1916,15 @@ def _attach_to_tmux(terminal_id, tmux_name, project_path, flags, remote_host_id,
             }
 
         # Start reader thread
+        # Debug file for terminal data analysis
+        debug_file = open('/tmp/terminal_debug.log', 'a')
+        debug_file.write(f"\n=== New terminal {terminal_id} at {datetime.now()} ===\n")
+
+        # Simple rate limiting - drop excess data during burst
+        # Rate-limited buffering - collect data between emits, send all at once
+        emit_buffer = ['']  # Use list for nonlocal mutation
+        last_emit_time = [0]
+
         def read_terminal():
             while terminal_id in active_terminals:
                 try:
@@ -1853,30 +1932,33 @@ def _attach_to_tmux(terminal_id, tmux_name, project_path, flags, remote_host_id,
                     if r:
                         output = os.read(fd, 4096)
                         if output:
-                            socketio.emit('terminal_output', {
-                                'id': terminal_id,
-                                'data': output.decode('utf-8', errors='replace')
-                            })
+                            decoded = output.decode('utf-8', errors='replace')
+                            filtered = DA_RESPONSE_FILTER.sub('', decoded)
+
+                            if filtered:
+                                # Buffer the data
+                                emit_buffer[0] += filtered
+                                now = time.time()
+
+                                # Emit at 60fps (16ms) - smooth TUI updates
+                                if now - last_emit_time[0] >= 0.016 and emit_buffer[0]:
+                                    socketio.emit('terminal_output', {
+                                        'id': terminal_id,
+                                        'data': emit_buffer[0]
+                                    })
+                                    emit_buffer[0] = ''
+                                    last_emit_time[0] = now
                         else:
                             break
                 except (OSError, IOError):
                     break
 
-            # PTY closed — but tmux session may still be alive
-            with active_terminals_lock:
-                if terminal_id in active_terminals:
-                    tmux_alive = _tmux_session_exists(tmux_name)
-                    del active_terminals[terminal_id]
-                    if tmux_alive:
-                        socketio.emit('terminal_detached', {
-                            'id': terminal_id,
-                            'tmux_session': tmux_name,
-                        })
-                    else:
-                        socketio.emit('terminal_killed', {
-                            'id': terminal_id,
-                            'tmux_session': tmux_name,
-                        })
+            # Flush any remaining buffer on exit
+            if emit_buffer[0]:
+                socketio.emit('terminal_output', {
+                    'id': terminal_id,
+                    'data': emit_buffer[0]
+                })
 
         thread = threading.Thread(target=read_terminal, daemon=True)
         thread.start()
@@ -2543,7 +2625,7 @@ def api_list_files():
 def api_autonomous_go_command():
     """Return the content of .claude/commands/go.md for the autonomous mode task textarea.
     This endpoint is needed because the app directory is excluded from validate_file_path()."""
-    go_path = os.path.join(APP_DIR, '.claude', 'commands', 'go.md')
+    go_path = os.path.join(os.path.dirname(__file__), '.claude', 'commands', 'go.md')
     try:
         with open(go_path, 'r') as f:
             content = f.read()

@@ -5,6 +5,14 @@
  *           session search, export, multi-user, PWA
  */
 
+// Version for cache-busting verification
+const APP_VERSION = '1.5.17';
+const DEBUG_MODE = false;  // Set to false to disable verbose logging
+const log = (...args) => DEBUG_MODE && console.log('[QN]', new Date().toISOString().substr(11, 12), ...args);
+const logError = (...args) => console.error('[QN ERROR]', new Date().toISOString().substr(11, 12), ...args);
+console.log(`[QN Code Assistant] Client v${APP_VERSION} loaded - DA filter active`);
+console.log('[QN] Debug mode:', DEBUG_MODE ? 'ENABLED' : 'disabled');
+
 class ClaudeCodeWeb {
     constructor() {
         // State
@@ -113,6 +121,20 @@ class ClaudeCodeWeb {
             autonomousTask: document.getElementById('flag-autonomous-task'),
             autoRestart: document.getElementById('flag-auto-restart'),
         };
+
+        // Stable browser ID for reconnection correlation
+        this._browserId = sessionStorage.getItem('qn_browser_id');
+        if (!this._browserId) {
+            // crypto.randomUUID() requires secure context (HTTPS) — fall back for plain HTTP
+            this._browserId = (typeof crypto.randomUUID === 'function')
+                ? crypto.randomUUID()
+                : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+                    const r = Math.random() * 16 | 0;
+                    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+                });
+            sessionStorage.setItem('qn_browser_id', this._browserId);
+        }
+        this._detachedCheckTimer = null;
 
         this.init();
     }
@@ -606,7 +628,8 @@ class ClaudeCodeWeb {
             reconnection: true,
             reconnectionAttempts: Infinity,
             reconnectionDelay: 1000,
-            reconnectionDelayMax: 10000
+            reconnectionDelayMax: 10000,
+            query: { browser_id: this._browserId }
         });
 
         this._wasConnected = false;
@@ -621,28 +644,55 @@ class ClaudeCodeWeb {
             }
             this._wasConnected = true;
 
-            // Check for detached tmux sessions to reconnect
-            this._checkDetachedSessions();
+            // Debounce detached session check — avoids flicker during reconnect storms.
+            // The server grace period keeps terminals alive for 30s, so a 3s delay here
+            // means we only check once the connection is stable.
+            this._scheduleDetachedCheck(3000);
         });
 
         this.socket.on('disconnect', (reason) => {
             this.elements.connectionStatus.classList.remove('connected');
             document.getElementById('connection-banner').classList.add('visible');
             this.showToast('Connection lost - reconnecting...', 'error', 6000);
+            clearTimeout(this._detachedCheckTimer);
         });
 
         this.socket.on('reconnect_attempt', () => {});
 
         // Terminal events
+        this._pendingTerminalOutput = {};  // Buffer for output that arrives before terminal is created
+        
         this.socket.on('terminal_created', (data) => {
             this._addTerminalTab(data.id, data.project, data.tmux_session);
+            
+            // Flush any queued output that arrived before terminal was created
+            if (this._pendingTerminalOutput[data.id]) {
+                const pending = this._pendingTerminalOutput[data.id];
+                const term = this.terminals[data.id];
+                if (term) {
+                    pending.forEach(output => term.terminal.write(output));
+                    log('Flushed', pending.length, 'queued outputs for terminal', data.id.substr(0,8));
+                }
+                delete this._pendingTerminalOutput[data.id];
+            }
         });
 
         this.socket.on('terminal_output', (data) => {
+            // Filter out DA (Device Attributes) query responses
+            const filtered = data.data.replace(/\x1b\[\?[\d;]*c|\x1b\[>[\d;]*c|\^\[\[\?[\d;]*c|\^\[\[>[\d;]*c/g, '');
+            if (!filtered) return;
+
             const term = this.terminals[data.id];
-            if (term) {
-                term.terminal.write(data.data);
+            if (!term) {
+                // Queue for terminals not yet created
+                this._pendingTerminalOutput = this._pendingTerminalOutput || {};
+                this._pendingTerminalOutput[data.id] = this._pendingTerminalOutput[data.id] || [];
+                this._pendingTerminalOutput[data.id].push(filtered);
+                return;
             }
+
+            // Direct write - server handles rate limiting
+            term.terminal.write(filtered);
         });
 
         this.socket.on('terminal_detached', (data) => {
@@ -654,7 +704,7 @@ class ClaudeCodeWeb {
                 term.closed = true;
                 this.renderTerminalTabs();
             }
-            this._checkDetachedSessions();
+            this._scheduleDetachedCheck(1000);
         });
 
         this.socket.on('terminal_killed', (data) => {
@@ -668,7 +718,7 @@ class ClaudeCodeWeb {
 
         this.socket.on('tmux_session_killed', (data) => {
             this.showToast(`tmux session ${data.tmux_session} terminated`, 'info');
-            this._checkDetachedSessions();
+            this._scheduleDetachedCheck(1000);
         });
 
         // Chat events
@@ -1256,7 +1306,14 @@ class ClaudeCodeWeb {
         }
         this.elements.terminalProject.textContent = label;
         this._filesCurrentPath = path;
-        this.fetchGitStatus(path);
+        
+        // Skip git status for remote projects (path doesn't exist locally)
+        if (!remoteHostId) {
+            this.fetchGitStatus(path);
+        } else {
+            const badge = document.getElementById('git-status-badge');
+            if (badge) badge.classList.add('hidden');
+        }
 
         // Show/hide wizard button (hidden for remote hosts)
         const wizBtn = document.getElementById('btn-init-wizard');
@@ -1307,7 +1364,12 @@ class ClaudeCodeWeb {
             cursorBlink: true,
             fontSize: 14,
             fontFamily: "'SF Mono', 'Fira Code', 'Consolas', monospace",
-            theme: this._terminalTheme()
+            theme: this._terminalTheme(),
+            // Performance optimizations to prevent scroll flooding
+            scrollback: 2000,           // Limit scrollback buffer
+            smoothScrollDuration: 0,    // Disable smooth scroll animation
+            fastScrollModifier: 'alt',  // Alt+scroll for fast scrolling
+            fastScrollSensitivity: 5,
         });
 
         const fitAddon = new FitAddon.FitAddon();
@@ -1351,6 +1413,9 @@ class ClaudeCodeWeb {
         this.terminals[terminalId] = termData;
         this.switchTerminalTab(terminalId);
         this.renderTerminalTabs();
+
+        // Clear any initialization garbage (DA query responses, etc.)
+        termData.terminal.write('\x1b[2J\x1b[H');
 
         const projectName = project.split('/').pop() || project;
         if (tmuxSession) {
@@ -1491,6 +1556,11 @@ class ClaudeCodeWeb {
         if (id && this.terminals[id] && !this.terminals[id].closed) {
             this.socket.emit('terminal_kill', { id: id, kill_tmux: true });
         }
+    }
+
+    _scheduleDetachedCheck(delayMs) {
+        clearTimeout(this._detachedCheckTimer);
+        this._detachedCheckTimer = setTimeout(() => this._checkDetachedSessions(), delayMs);
     }
 
     async _checkDetachedSessions() {
