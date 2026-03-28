@@ -1483,7 +1483,7 @@ def api_push_key():
             f'echo KEY_INSTALLED'
         )
         cmd = [
-            'sshpass', '-p', password,
+            'sshpass', '-e',
             'ssh', '-o', 'StrictHostKeyChecking=accept-new',
             '-o', 'ConnectTimeout=10',
             '-p', str(port),
@@ -1491,7 +1491,9 @@ def api_push_key():
             remote_cmd
         ]
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+            ssh_env = os.environ.copy()
+            ssh_env['SSHPASS'] = password
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=15, env=ssh_env)
             if 'KEY_INSTALLED' in result.stdout:
                 return jsonify({'success': True, 'message': 'SSH key installed successfully'})
             return jsonify({

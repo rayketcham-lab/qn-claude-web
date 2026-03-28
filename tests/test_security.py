@@ -989,6 +989,35 @@ class TestTmuxOwnership(unittest.TestCase):
 
 
 # ===================================================================
+# SSH Credential Safety
+# ===================================================================
+class TestSshCredentialSafety(unittest.TestCase):
+    """Verify SSH credentials are never exposed via process arguments."""
+
+    def test_no_sshpass_dash_p_in_source(self):
+        """sshpass -p <password> exposes credentials in /proc/cmdline.
+        The app must use sshpass -e (env var) instead."""
+        import re
+        app_path = os.path.join(_project_root, 'app.py')
+        with open(app_path) as f:
+            source = f.read()
+        # Find any sshpass with -p flag (but not -p for ssh port)
+        matches = re.findall(r"'sshpass',\s*'-p'", source)
+        self.assertEqual(len(matches), 0,
+                         "Found sshpass -p in app.py — use sshpass -e with SSHPASS env var instead")
+
+    def test_sshpass_uses_env_flag(self):
+        """Verify sshpass is invoked with -e flag."""
+        import re
+        app_path = os.path.join(_project_root, 'app.py')
+        with open(app_path) as f:
+            source = f.read()
+        matches = re.findall(r"'sshpass',\s*'-e'", source)
+        self.assertGreater(len(matches), 0,
+                           "sshpass should use -e flag (reads password from SSHPASS env var)")
+
+
+# ===================================================================
 # CORS Origin Validation
 # ===================================================================
 class TestCorsOrigins(unittest.TestCase):
