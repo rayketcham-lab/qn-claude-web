@@ -53,6 +53,17 @@ def _restore_config(snap):
     app_module.CONFIG['users'] = [dict(u) for u in snap['users']]
 
 
+def _get_csrf(client):
+    """Fetch a CSRF token for the current session."""
+    resp = client.get('/api/csrf-token')
+    return json.loads(resp.data)['csrf_token']
+
+
+def _csrf_headers(client):
+    """Return headers dict with a valid CSRF token."""
+    return {'X-CSRF-Token': _get_csrf(client)}
+
+
 def _reset_rate_limits():
     """Clear the in-memory rate limit store between tests."""
     with app_module._rate_limit_lock:
@@ -333,6 +344,7 @@ class TestConfigAdminGate(unittest.TestCase):
                 '/api/config',
                 data=json.dumps({'remote_hosts': []}),
                 content_type='application/json',
+                headers=_csrf_headers(client),
             )
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
@@ -346,6 +358,7 @@ class TestConfigAdminGate(unittest.TestCase):
                 '/api/config',
                 data=json.dumps({'theme': 'light'}),
                 content_type='application/json',
+                headers=_csrf_headers(client),
             )
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
@@ -509,6 +522,7 @@ class TestUserManagement(unittest.TestCase):
                 '/api/users',
                 data=json.dumps({'username': 'brandnew', 'password': 'strongpass1', 'role': 'user'}),
                 content_type='application/json',
+                headers=_csrf_headers(client),
             )
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
@@ -526,6 +540,7 @@ class TestUserManagement(unittest.TestCase):
                 '/api/users',
                 data=json.dumps({'username': 'regularuser', 'password': 'somepassword1', 'role': 'user'}),
                 content_type='application/json',
+                headers=_csrf_headers(client),
             )
         self.assertEqual(resp.status_code, 409)
 
@@ -533,7 +548,10 @@ class TestUserManagement(unittest.TestCase):
         """An admin attempting to delete their own account returns 400."""
         with flask_app.test_client() as client:
             self._login_as_admin(client)
-            resp = client.delete('/api/users/adminuser')
+            resp = client.delete(
+                '/api/users/adminuser',
+                headers=_csrf_headers(client),
+            )
         self.assertEqual(resp.status_code, 400)
         data = resp.get_json()
         self.assertIn('yourself', data.get('error', '').lower())
@@ -546,8 +564,173 @@ class TestUserManagement(unittest.TestCase):
                 '/api/users/adminuser/password',
                 data=json.dumps({'password': 'newstrongpass1'}),
                 content_type='application/json',
+                headers=_csrf_headers(client),
             )
         self.assertEqual(resp.status_code, 403)
+
+
+# ============== CSRF Protection Tests ==============
+
+
+class TestCSRFProtection(unittest.TestCase):
+    """Verify CSRF token validation on state-changing endpoints."""
+
+    def setUp(self):
+        self._orig_config = dict(app_module.CONFIG)
+        app_module.CONFIG['auth'] = {
+            'enabled': True,
+            'username': 'admin',
+            'password_hash': generate_password_hash('testpass123'),
+        }
+        app_module.CONFIG['users'] = [{
+            'username': 'admin',
+            'password_hash': generate_password_hash('testpass123'),
+            'role': 'admin',
+        }]
+
+    def tearDown(self):
+        app_module.CONFIG.clear()
+        app_module.CONFIG.update(self._orig_config)
+
+    def _login(self, client):
+        with client.session_transaction() as sess:
+            sess['authenticated'] = True
+            sess['username'] = 'admin'
+            sess['role'] = 'admin'
+            sess['login_time'] = datetime.utcnow().isoformat()
+
+    def _get_csrf_token(self, client):
+        resp = client.get('/api/csrf-token')
+        return json.loads(resp.data)['csrf_token']
+
+    def test_csrf_token_endpoint_returns_token(self):
+        """GET /api/csrf-token returns a token string."""
+        with flask_app.test_client() as client:
+            resp = client.get('/api/csrf-token')
+            data = json.loads(resp.data)
+            self.assertIn('csrf_token', data)
+            self.assertTrue(len(data['csrf_token']) > 0)
+
+    def test_config_post_without_csrf_returns_403(self):
+        """POST /api/config without CSRF token returns 403 when auth is enabled."""
+        with flask_app.test_client() as client:
+            self._login(client)
+            resp = client.post(
+                '/api/config',
+                data=json.dumps({'theme': 'midnight-blue'}),
+                content_type='application/json',
+            )
+            self.assertEqual(resp.status_code, 403)
+            data = json.loads(resp.data)
+            self.assertIn('CSRF', data['error'])
+
+    def test_config_post_with_valid_csrf_succeeds(self):
+        """POST /api/config with valid CSRF token succeeds."""
+        with flask_app.test_client() as client:
+            self._login(client)
+            token = self._get_csrf_token(client)
+            resp = client.post(
+                '/api/config',
+                data=json.dumps({'theme': 'midnight-blue'}),
+                content_type='application/json',
+                headers={'X-CSRF-Token': token},
+            )
+            self.assertEqual(resp.status_code, 200)
+
+    def test_csrf_not_required_when_auth_disabled(self):
+        """CSRF check is skipped when auth is disabled."""
+        app_module.CONFIG['auth']['enabled'] = False
+        with flask_app.test_client() as client:
+            resp = client.post(
+                '/api/config',
+                data=json.dumps({'theme': 'dark'}),
+                content_type='application/json',
+            )
+            self.assertEqual(resp.status_code, 200)
+
+    def test_wrong_csrf_token_returns_403(self):
+        """POST with an incorrect CSRF token returns 403."""
+        with flask_app.test_client() as client:
+            self._login(client)
+            # Get a real token first to establish session
+            self._get_csrf_token(client)
+            resp = client.post(
+                '/api/config',
+                data=json.dumps({'theme': 'dark'}),
+                content_type='application/json',
+                headers={'X-CSRF-Token': 'invalid-token-value'},
+            )
+            self.assertEqual(resp.status_code, 403)
+
+    def test_users_post_requires_csrf(self):
+        """POST /api/users requires CSRF token."""
+        with flask_app.test_client() as client:
+            self._login(client)
+            resp = client.post(
+                '/api/users',
+                data=json.dumps({'username': 'newuser', 'password': 'password123', 'role': 'user'}),
+                content_type='application/json',
+            )
+            self.assertEqual(resp.status_code, 403)
+
+    def test_file_write_requires_csrf(self):
+        """POST /api/files/write requires CSRF token."""
+        with flask_app.test_client() as client:
+            self._login(client)
+            resp = client.post(
+                '/api/files/write',
+                data=json.dumps({'path': '/tmp/test.txt', 'content': 'hello'}),
+                content_type='application/json',
+            )
+            self.assertEqual(resp.status_code, 403)
+
+
+# ============== WebSocket Auth Tests ==============
+
+
+class TestWebSocketAuth(unittest.TestCase):
+    """Verify _ws_auth_check function behavior."""
+
+    def setUp(self):
+        self._orig_config = dict(app_module.CONFIG)
+
+    def tearDown(self):
+        app_module.CONFIG.clear()
+        app_module.CONFIG.update(self._orig_config)
+
+    def test_ws_auth_passes_when_auth_disabled(self):
+        """_ws_auth_check returns True when auth is not enabled."""
+        app_module.CONFIG['auth'] = {'enabled': False}
+        with flask_app.test_request_context():
+            self.assertTrue(app_module._ws_auth_check())
+
+    def test_ws_auth_fails_when_not_authenticated(self):
+        """_ws_auth_check returns False when session is not authenticated."""
+        app_module.CONFIG['auth'] = {'enabled': True}
+        with flask_app.test_request_context():
+            from flask import session as flask_session
+            flask_session.clear()
+            self.assertFalse(app_module._ws_auth_check())
+
+    def test_ws_auth_fails_on_expired_session(self):
+        """_ws_auth_check returns False when session has expired."""
+        app_module.CONFIG['auth'] = {'enabled': True}
+        app_module.CONFIG['session_timeout_hours'] = 1
+        with flask_app.test_request_context():
+            from flask import session as flask_session
+            flask_session['authenticated'] = True
+            flask_session['login_time'] = (datetime.utcnow() - timedelta(hours=2)).isoformat()
+            self.assertFalse(app_module._ws_auth_check())
+
+    def test_ws_auth_passes_with_valid_session(self):
+        """_ws_auth_check returns True with a valid, non-expired session."""
+        app_module.CONFIG['auth'] = {'enabled': True}
+        app_module.CONFIG['session_timeout_hours'] = 24
+        with flask_app.test_request_context():
+            from flask import session as flask_session
+            flask_session['authenticated'] = True
+            flask_session['login_time'] = datetime.utcnow().isoformat()
+            self.assertTrue(app_module._ws_auth_check())
 
 
 if __name__ == '__main__':

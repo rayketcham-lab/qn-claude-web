@@ -4,12 +4,15 @@ QN Code Assistant
 A full-featured web frontend for Claude Code CLI
 """
 
+import hashlib
+import hmac
 import os
 import sys
 import json
 import logging
 import pty
 import re
+import secrets
 import select
 import shlex
 import subprocess
@@ -246,6 +249,43 @@ def add_security_headers(response):
     response.headers.pop('Server', None)
 
     return response
+
+
+# ============== CSRF Protection ==============
+
+def _generate_csrf_token():
+    """Generate a CSRF token tied to the current session."""
+    if 'csrf_token' not in session:
+        session['csrf_token'] = secrets.token_hex(32)
+    return session['csrf_token']
+
+
+def _validate_csrf_token():
+    """Validate CSRF token from request header or form data."""
+    token = request.headers.get('X-CSRF-Token') or (request.json or {}).get('_csrf_token', '')
+    expected = session.get('csrf_token', '')
+    if not expected or not token:
+        return False
+    return hmac.compare_digest(token, expected)
+
+
+def csrf_protect(f):
+    """Decorator to require CSRF token on state-changing endpoints."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth_config = CONFIG.get('auth', {})
+        if not auth_config.get('enabled', False):
+            return f(*args, **kwargs)
+        if not _validate_csrf_token():
+            return jsonify({'error': 'CSRF token missing or invalid'}), 403
+        return f(*args, **kwargs)
+    return decorated
+
+
+@app.route('/api/csrf-token')
+def api_csrf_token():
+    """Get a CSRF token for the current session."""
+    return jsonify({'csrf_token': _generate_csrf_token()})
 
 
 # Usage tracking
@@ -1192,6 +1232,7 @@ def api_projects():
 
 @app.route('/api/projects/root', methods=['POST'])
 @login_required
+@csrf_protect
 def set_projects_root():
     """Set the projects root directory"""
     data = request.json or {}
@@ -1234,6 +1275,7 @@ def api_get_config():
 
 @app.route('/api/config', methods=['POST'])
 @login_required
+@csrf_protect
 def api_update_config():
     """Update configuration and persist"""
     data = request.json or {}
@@ -1299,6 +1341,7 @@ def api_agents_library():
 
 @app.route('/api/remote/test', methods=['POST'])
 @login_required
+@csrf_protect
 def api_test_remote():
     """Test connectivity to a remote host"""
     data = request.json or {}
@@ -1506,6 +1549,7 @@ def api_ssh_setup():
 
 @app.route('/api/remote/push-key', methods=['POST'])
 @login_required
+@csrf_protect
 def api_push_key():
     """Push SSH key to a remote host using ssh-copy-id or manual append"""
     data = request.json or {}
@@ -1779,6 +1823,23 @@ def load_session(session_id):
 
 # ============== WebSocket Handlers ==============
 
+def _ws_auth_check():
+    """Re-validate session on sensitive WebSocket events. Returns True if authorized."""
+    auth_config = CONFIG.get('auth', {})
+    if not auth_config.get('enabled', False):
+        return True
+    if not session.get('authenticated'):
+        return False
+    # Check session timeout
+    login_time = session.get('login_time')
+    if login_time:
+        timeout_hours = CONFIG.get('session_timeout_hours', 24)
+        elapsed = (datetime.utcnow() - datetime.fromisoformat(login_time)).total_seconds()
+        if elapsed > timeout_hours * 3600:
+            return False
+    return True
+
+
 @socketio.on('connect')
 def handle_connect():
     """Handle client connection — cancel pending disconnect grace if same browser reconnects"""
@@ -1858,6 +1919,9 @@ def handle_disconnect():
 @socketio.on('terminal_create')
 def handle_terminal_create(data):
     """Create a new terminal session with Claude Code inside a persistent tmux session"""
+    if not _ws_auth_check():
+        emit('terminal_error', {'error': 'Session expired'})
+        return
     # Check concurrent terminal limit
     with active_terminals_lock:
         if len(active_terminals) >= CONFIG['max_concurrent_terminals']:
@@ -2059,6 +2123,8 @@ def _attach_to_tmux(terminal_id, tmux_name, project_path, flags, remote_host_id,
 @socketio.on('terminal_input')
 def handle_terminal_input(data):
     """Send input to terminal"""
+    if not _ws_auth_check():
+        return
     terminal_id = data.get('id')
     input_data = data.get('data', '')
 
@@ -2074,6 +2140,8 @@ def handle_terminal_input(data):
 @socketio.on('terminal_resize')
 def handle_terminal_resize(data):
     """Resize terminal"""
+    if not _ws_auth_check():
+        return
     terminal_id = data.get('id')
     cols = data.get('cols', 80)
     rows = data.get('rows', 24)
@@ -2093,6 +2161,8 @@ def handle_terminal_resize(data):
 
 @socketio.on('terminal_kill')
 def handle_terminal_kill(data):
+    if not _ws_auth_check():
+        return
     """Kill terminal PTY attachment; optionally destroy the tmux session."""
     terminal_id = data.get('id')
     kill_tmux = data.get('kill_tmux', False)
@@ -2123,6 +2193,8 @@ def handle_terminal_kill(data):
 @socketio.on('terminal_detach')
 def handle_terminal_detach(data):
     """Detach from a tmux session without killing it — session persists for reconnect"""
+    if not _ws_auth_check():
+        return
     terminal_id = data.get('id')
 
     with active_terminals_lock:
@@ -2147,6 +2219,9 @@ def handle_terminal_detach(data):
 @socketio.on('terminal_reconnect')
 def handle_terminal_reconnect(data):
     """Reconnect to an existing tmux session"""
+    if not _ws_auth_check():
+        emit('terminal_error', {'error': 'Session expired'})
+        return
     tmux_name = data.get('tmux_session')
 
     if not tmux_name or not TMUX_NAME_RE.match(tmux_name):
@@ -2191,6 +2266,8 @@ def handle_terminal_reconnect(data):
 @socketio.on('terminal_kill_tmux')
 def handle_terminal_kill_tmux(data):
     """Kill a detached tmux session that isn't currently attached"""
+    if not _ws_auth_check():
+        return
     tmux_name = data.get('tmux_session')
 
     if not tmux_name or not TMUX_NAME_RE.match(tmux_name):
@@ -2219,6 +2296,9 @@ def handle_terminal_kill_tmux(data):
 @socketio.on('chat_message')
 def handle_chat_message(data):
     """Handle chat message - run claude with prompt"""
+    if not _ws_auth_check():
+        emit('chat_error', {'error': 'Session expired'})
+        return
     session_id = data.get('session_id')
     message = data.get('message', '')
 
@@ -2797,6 +2877,7 @@ def api_read_file():
 
 @app.route('/api/files/write', methods=['POST'])
 @login_required
+@csrf_protect
 def api_write_file():
     """Write content to an existing file"""
     data = request.json or {}
@@ -2910,6 +2991,7 @@ def api_list_users():
 
 @app.route('/api/users', methods=['POST'])
 @login_required
+@csrf_protect
 def api_create_user():
     """Create a new user (admin only)"""
     user = get_current_user()
@@ -2945,6 +3027,7 @@ def api_create_user():
 
 @app.route('/api/users/<username>', methods=['DELETE'])
 @login_required
+@csrf_protect
 def api_delete_user(username):
     """Delete a user (admin only)"""
     user = get_current_user()
@@ -2963,6 +3046,7 @@ def api_delete_user(username):
 
 @app.route('/api/users/<username>/password', methods=['POST'])
 @login_required
+@csrf_protect
 def api_change_user_password(username):
     """Change a user's password (admin or self)"""
     user = get_current_user()
@@ -3217,6 +3301,7 @@ def api_project_detect():
 
 @app.route('/api/project/init', methods=['POST'])
 @login_required
+@csrf_protect
 def api_project_init():
     """Write CLAUDE.md and optionally .claude/settings.json to a project"""
     data = request.json
@@ -3289,6 +3374,7 @@ def api_project_init():
 
 @app.route('/api/project/deploy-claude-md', methods=['POST'])
 @login_required
+@csrf_protect
 def api_project_deploy_claude_md():
     """Deploy the server's own CLAUDE.md as template to a target project"""
     data = request.json or {}
@@ -3449,6 +3535,7 @@ def api_state():
 
 @app.route('/api/maintenance/cleanup', methods=['POST'])
 @login_required
+@csrf_protect
 def api_cleanup():
     """Force cleanup of old processes"""
     cleanup_old_processes()
@@ -3457,6 +3544,7 @@ def api_cleanup():
 
 @app.route('/api/maintenance/backup', methods=['POST'])
 @login_required
+@csrf_protect
 def api_backup():
     """Force backup all sessions"""
     backup_all_sessions()
