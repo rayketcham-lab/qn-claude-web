@@ -499,7 +499,8 @@ class TestBuildClaudeCommand(unittest.TestCase):
     # -- Backward compat: dangerously_skip_permissions ---------------
     def test_legacy_skip_permissions_compat(self):
         cmd = self._build(flags={'dangerously_skip_permissions': True})
-        self.assertIn('--dangerously-skip-permissions', cmd)
+        self.assertIn('--permission-mode', cmd)
+        self.assertIn('acceptEdits', cmd)
 
     def test_permission_mode_takes_precedence(self):
         """If permission_mode is set, legacy flag should NOT appear."""
@@ -507,7 +508,9 @@ class TestBuildClaudeCommand(unittest.TestCase):
             'permission_mode': 'dontAsk',
             'dangerously_skip_permissions': True,
         })
-        self.assertNotIn('--dangerously-skip-permissions', cmd)
+        # permission_mode wins — should use dontAsk, not acceptEdits
+        idx = cmd.index('--permission-mode')
+        self.assertEqual(cmd[idx + 1], 'dontAsk')
         self.assertIn('--permission-mode', cmd)
 
     # -- Prompt passthrough -----------------------------------------
@@ -625,18 +628,27 @@ class TestBuildClaudeEnv(unittest.TestCase):
         self.assertEqual(env['CLAUDE_AUTOCOMPACT_PCT_OVERRIDE'], '100')
 
     def test_autocompact_non_numeric_ignored(self):
-        env = build_claude_env({'autocompact_threshold': 'abc'})
-        self.assertNotIn('CLAUDE_AUTOCOMPACT_PCT_OVERRIDE', env)
+        clean_env = {k: v for k, v in os.environ.items()
+                     if k != 'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE'}
+        with patch.dict(os.environ, clean_env, clear=True):
+            env = build_claude_env({'autocompact_threshold': 'abc'})
+            self.assertNotIn('CLAUDE_AUTOCOMPACT_PCT_OVERRIDE', env)
 
     def test_autocompact_none_not_set(self):
         """When threshold is explicitly None, env var should not be set
         (the 'is not None' guard in app.py skips it)."""
-        env = build_claude_env({'autocompact_threshold': None})
-        self.assertNotIn('CLAUDE_AUTOCOMPACT_PCT_OVERRIDE', env)
+        clean_env = {k: v for k, v in os.environ.items()
+                     if k != 'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE'}
+        with patch.dict(os.environ, clean_env, clear=True):
+            env = build_claude_env({'autocompact_threshold': None})
+            self.assertNotIn('CLAUDE_AUTOCOMPACT_PCT_OVERRIDE', env)
 
     def test_autocompact_absent_not_set(self):
-        env = build_claude_env({})
-        self.assertNotIn('CLAUDE_AUTOCOMPACT_PCT_OVERRIDE', env)
+        clean_env = {k: v for k, v in os.environ.items()
+                     if k != 'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE'}
+        with patch.dict(os.environ, clean_env, clear=True):
+            env = build_claude_env({})
+            self.assertNotIn('CLAUDE_AUTOCOMPACT_PCT_OVERRIDE', env)
 
     # -- Agent teams flag --------------------------------------------
     def test_agent_teams_enabled(self):
