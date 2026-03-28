@@ -435,10 +435,10 @@ interactive_setup() {
         # Password with confirmation
         local cfg_password=""
         while true; do
-            read -s -p "$(echo -e "    ${CYAN}Password${NC} (min 4 chars): ")" cfg_password
+            read -s -p "$(echo -e "    ${CYAN}Password${NC} (min 8 chars): ")" cfg_password
             echo ""
-            if [[ "${#cfg_password}" -lt 4 ]]; then
-                log_error "Password must be at least 4 characters."
+            if [[ "${#cfg_password}" -lt 8 ]]; then
+                log_error "Password must be at least 8 characters."
                 continue
             fi
             local cfg_password_confirm=""

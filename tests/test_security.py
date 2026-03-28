@@ -1092,7 +1092,8 @@ class TestInstallerPythonVersion(unittest.TestCase):
         installer_path = os.path.join(_project_root, 'build-installer.sh')
         with open(installer_path) as f:
             source = f.read()
-        self.assertNotIn('lt 8', source, "Installer still checks for 3.8")
+        # Check the Python version context specifically (py_minor -lt N)
+        self.assertNotIn('py_minor}" -lt 8', source, "Installer still checks for 3.8")
         self.assertIn('lt 10', source, "Installer should check for 3.10+")
 
     def test_release_requires_310(self):
@@ -1100,7 +1101,8 @@ class TestInstallerPythonVersion(unittest.TestCase):
         release_path = os.path.join(_project_root, 'build-release.sh')
         with open(release_path) as f:
             source = f.read()
-        self.assertNotIn('lt 8', source, "Release script still checks for 3.8")
+        # Check the Python version context specifically (py_minor -lt N)
+        self.assertNotIn('py_minor}" -lt 8', source, "Release script still checks for 3.8")
         self.assertIn('lt 10', source, "Release script should check for 3.10+")
 
 

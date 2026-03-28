@@ -29,7 +29,7 @@ VERSION="1.6.0"
 
 # SHA-256 hashes baked at build time
 declare -A FILE_HASHES=(
-    ["app.py"]="507630b5d521fcd3a368223746111ab696a7939e52e477cdf82f9ae2a47344ca"
+    ["app.py"]="4c6d4a69e3160c8db2f67d5f75afb281419c47a0008936c858073f16753a9c43"
     ["static/js/app.js"]="6679f6b15c452046dc689f82ec0107a03952073aaeee04e733c4123ad93d6379"
     ["static/css/style.css"]="5fb199bc175bef59b5cb4efa14882975385f7dd443535f575159e1863542b9c8"
     ["templates/index.html"]="4f8138703efcab691f5bde10fc32b3fdf7419d3eb1650105d139c829d6125eb2"
@@ -41,7 +41,7 @@ declare -A FILE_HASHES=(
     ["apache-proxy.conf"]="5eab0edd895142e586693d410f82146cea4fd7dc0327c684cbf4b80c65fda248"
     ["maintenance.sh"]="69cb8b8938771c83b810d4736113bb1dfdb4a225d83858eb3e475a284ae0ecdc"
     ["start.sh"]="3c321fffe379a6ce9d1d3b782542e0c69e2348874a7fb5e26826d2f25b5306bc"
-    ["qn-code-assistant.service"]="40dbf2672adce192d5a83d4edced714d130c3c252a3d6b32dcb35deeccb26028"
+    ["qn-code-assistant.service"]="cd941292f380608cfac567847a1aa18cc4326038d1debc1f65836e17305ff9d9"
 )
 
 VENDOR_HASH="1ddb9ad9384df343937a83d208f5f3d7ff743170118973b0f6fcde65e20f3765"
@@ -321,10 +321,10 @@ interactive_setup() {
         # Password with confirmation
         local cfg_password=""
         while true; do
-            read -s -p "$(echo -e "    ${CYAN}Password${NC} (min 4 chars): ")" cfg_password
+            read -s -p "$(echo -e "    ${CYAN}Password${NC} (min 8 chars): ")" cfg_password
             echo ""
-            if [[ "${#cfg_password}" -lt 4 ]]; then
-                log_error "Password must be at least 4 characters."
+            if [[ "${#cfg_password}" -lt 8 ]]; then
+                log_error "Password must be at least 8 characters."
                 continue
             fi
             local cfg_password_confirm=""

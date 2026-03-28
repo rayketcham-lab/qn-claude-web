@@ -15,7 +15,9 @@ After=network.target
 
 [Service]
 Type=simple
-User=claude
+# Set User and Group to match the system user that owns /opt/claude-web
+User=pleb
+Group=pleb
 WorkingDirectory=/opt/claude-web
 ExecStart=/usr/bin/python3 /opt/claude-web/app.py
 Restart=on-failure

@@ -196,11 +196,15 @@ config_lock = threading.Lock()
 CONFIG['sessions_dir'] = Path(__file__).parent / 'sessions'
 CONFIG['backup_dir'] = Path(__file__).parent / 'backups'
 
-# Persistent secret key (survives restarts so sessions aren't lost)
-if 'secret_key' not in CONFIG:
-    CONFIG['secret_key'] = os.urandom(24).hex()
+# Secret key: env var takes precedence, then config.json fallback, then auto-generate
+_secret_key = os.environ.get('QN_SECRET_KEY')
+if not _secret_key:
+    _secret_key = CONFIG.get('secret_key')
+if not _secret_key:
+    _secret_key = os.urandom(24).hex()
+    CONFIG['secret_key'] = _secret_key
     save_config(CONFIG)
-app.secret_key = CONFIG['secret_key']
+app.secret_key = _secret_key
 
 # Secure cookie configuration
 app.config['SESSION_COOKIE_HTTPONLY'] = True
@@ -218,11 +222,16 @@ def add_security_headers(response):
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
 
     # Content-Security-Policy: allow CDN scripts for xterm, socketio, marked, hljs
+    # Build connect-src from configured origins instead of allowing all
+    host = request.host.split(':')[0]
+    port = CONFIG.get('port', 5001)
+    ws_proto = 'wss' if CONFIG.get('ssl_enabled', False) else 'ws'
+    connect_origins = f"'self' {ws_proto}://{host}:{port}"
     csp = (
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.socket.io; "
         "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-        "connect-src 'self' http: https: ws: wss:; "
+        f"connect-src {connect_origins}; "
         "img-src 'self' data:; "
         "font-src 'self'; "
         "frame-ancestors 'self'"
@@ -280,6 +289,16 @@ def login_required(f):
             if request.is_json or request.path.startswith('/api/'):
                 return jsonify({'error': 'Authentication required'}), 401
             return redirect('/login')
+        # Enforce session timeout
+        login_time = session.get('login_time')
+        if login_time:
+            timeout_hours = CONFIG.get('session_timeout_hours', 24)
+            elapsed = (datetime.utcnow() - datetime.fromisoformat(login_time)).total_seconds()
+            if elapsed > timeout_hours * 3600:
+                session.clear()
+                if request.is_json or request.path.startswith('/api/'):
+                    return jsonify({'error': 'Session expired'}), 401
+                return redirect('/login')
         return f(*args, **kwargs)
     return decorated
 
@@ -1039,6 +1058,7 @@ def login():
             session['username'] = username
             session['role'] = user_role
             session['user_id'] = str(uuid.uuid4())
+            session['login_time'] = datetime.utcnow().isoformat()
             if request.is_json:
                 return jsonify({'success': True})
             return redirect('/')
@@ -1047,6 +1067,20 @@ def login():
         return render_template('login.html', error='Invalid username or password')
 
     return render_template('login.html')
+
+
+@app.route('/api/health')
+def api_health():
+    """Public health check endpoint — no auth required"""
+    uptime = (datetime.now() - START_TIME).total_seconds()
+    with active_terminals_lock:
+        terminal_count = len(active_terminals)
+    return jsonify({
+        'status': 'ok',
+        'version': VERSION,
+        'uptime_seconds': int(uptime),
+        'active_terminals': terminal_count,
+    })
 
 
 @app.route('/logout')
@@ -1115,6 +1149,7 @@ def auth_setup():
     session['username'] = username
     session['role'] = 'admin'
     session['user_id'] = str(uuid.uuid4())
+    session['login_time'] = datetime.utcnow().isoformat()
 
     return jsonify({'success': True})
 
@@ -1203,7 +1238,8 @@ def api_update_config():
     """Update configuration and persist"""
     data = request.json or {}
     # Security-sensitive keys require admin role
-    admin_only_keys = {'allowed_paths', 'allow_full_browsing', 'ssl_enabled', 'ssl_cert', 'ssl_key'}
+    admin_only_keys = {'allowed_paths', 'allow_full_browsing', 'ssl_enabled', 'ssl_cert', 'ssl_key',
+                       'remote_hosts', 'projects_root', 'default_flags'}
     if admin_only_keys & set(data.keys()):
         user = get_current_user()
         if user and user.get('role') != 'admin':
