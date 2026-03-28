@@ -1,0 +1,25 @@
+# Ruff configuration for QN Code Assistant
+# https://docs.astral.sh/ruff/configuration/
+
+# Target Python 3.10+ (minimum runtime requirement)
+target-version = "py310"
+
+line-length = 120
+
+[lint]
+# Enable pycodestyle (E/W), pyflakes (F), and a small isort subset (I)
+select = ["E", "W", "F", "I"]
+
+ignore = [
+    # Line too long — existing codebase has many long lines; enforce gradually
+    "E501",
+    # Ambiguous variable names (l, O, I) — widespread in existing code
+    "E741",
+    # Module level import not at top of file — vendored sys.path inserts require this
+    "E402",
+]
+
+# Don't auto-fix in CI — just report
+[lint.per-file-ignores]
+# Test files: allow assert statements and unused imports used for side effects
+"tests/*" = ["F401", "F811"]

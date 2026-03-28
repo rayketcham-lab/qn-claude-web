@@ -1,4 +1,4 @@
-# CI Pipeline — Unit Tests + Build Verification
+# CI Pipeline — Lint + Unit Tests + SAST + Build Verification
 # Runs on every push/PR to main. Self-hosted runner with working directory /opt/claude-web.
 
 name: CI
@@ -16,13 +16,32 @@ defaults:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Job 1: Unit Tests
+  # Job 1: Lint
+  # Runs ruff against app.py and the test suite. Fails the build on any
+  # linting error so new code stays clean. Config lives in ruff.toml.
+  # ---------------------------------------------------------------------------
+  lint:
+    runs-on: [self-hosted, qnca]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Run ruff
+        run: ruff check app.py tests/
+
+  # ---------------------------------------------------------------------------
+  # Job 2: Unit Tests + Coverage
   # Syncs test files from the checkout into the on-disk working directory
   # (vendored deps already live at /opt/claude-web/vendor/) and runs the
-  # full unittest suite, asserting a minimum test count.
+  # full unittest suite with coverage instrumentation.
   # ---------------------------------------------------------------------------
   unit-tests:
     runs-on: [self-hosted, qnca]
+    needs: lint
 
     steps:
       - name: Checkout code
@@ -34,17 +53,17 @@ jobs:
         run: |
           rsync -a --delete "${GITHUB_WORKSPACE}/tests/" /opt/claude-web/tests/
 
-      - name: Run unit tests
+      - name: Install coverage
+        run: pip install coverage
+
+      - name: Run unit tests with coverage
         id: tests
         run: |
-          # Capture output for both display and post-processing
-          /usr/bin/python3 -m unittest discover -s tests -p 'test_*.py' -v 2>&1 | tee /tmp/unittest_output.txt
-          # Preserve the unittest exit code (from PIPESTATUS)
+          coverage run -m unittest discover -s tests -p 'test_*.py' -v 2>&1 | tee /tmp/unittest_output.txt
           exit ${PIPESTATUS[0]}
 
       - name: Verify minimum test count
         run: |
-          # Extract the summary line, e.g. "Ran 142 tests in 1.234s"
           TEST_COUNT=$(grep -oP 'Ran \K[0-9]+' /tmp/unittest_output.txt || echo 0)
           echo "Tests executed: ${TEST_COUNT}"
           if [ "${TEST_COUNT}" -lt 100 ]; then
@@ -53,8 +72,32 @@ jobs:
           fi
           echo "Test count ${TEST_COUNT} meets minimum threshold (>=100)"
 
+      - name: Coverage report
+        run: coverage report --show-missing
+
   # ---------------------------------------------------------------------------
-  # Job 2: Build Verification
+  # Job 3: SAST — Bandit
+  # Static security analysis on app.py at medium+ severity (-ll).
+  # continue-on-error: true while existing findings are being triaged.
+  # Flip to false once the baseline is clean.
+  # ---------------------------------------------------------------------------
+  sast:
+    runs-on: [self-hosted, qnca]
+    needs: unit-tests
+    continue-on-error: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install bandit
+        run: pip install bandit
+
+      - name: Run bandit SAST
+        run: bandit -r app.py -ll
+
+  # ---------------------------------------------------------------------------
+  # Job 4: Build Verification
   # Rebuilds the installer, verifies hash integrity, and (on main only)
   # produces the self-extracting release artifact.
   # ---------------------------------------------------------------------------
@@ -74,7 +117,6 @@ jobs:
           /opt/claude-web/install.sh --verify-only
           echo "Installer integrity check passed"
 
-      # Release artifact is only built on pushes to main (not on PRs).
       - name: Build release artifact
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
@@ -83,7 +125,6 @@ jobs:
       - name: Verify release artifact exists
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
-          # Locate the generated .sh installer file
           RELEASE_FILE=$(ls -t /opt/claude-web/qn-code-assistant-v*.sh 2>/dev/null | head -1)
           if [ -z "${RELEASE_FILE}" ]; then
             echo "::error::Release artifact not found — expected qn-code-assistant-v*.sh"
