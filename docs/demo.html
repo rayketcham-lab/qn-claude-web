@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QN Claude Web — Live Demos</title>
+<link rel="stylesheet" type="text/css" href="https://unpkg.com/asciinema-player@3.7.1/dist/bundle/asciinema-player.css" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0a0a1a;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    color: #e0e0e0;
+    min-height: 100vh;
+  }
+  .hero {
+    text-align: center;
+    padding: 3rem 1rem 2rem;
+    background: linear-gradient(180deg, #0d1b2a 0%, #0a0a1a 100%);
+    border-bottom: 1px solid #1a2a3a;
+  }
+  .hero-badge {
+    display: inline-block;
+    padding: 0.3rem 0.8rem;
+    background: rgba(0, 212, 255, 0.1);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    border-radius: 20px;
+    font-size: 0.75rem;
+    color: #00d4ff;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 1rem;
+  }
+  .hero h1 { font-size: 2.5rem; font-weight: 700; color: #fff; margin-bottom: 0.5rem; }
+  .hero h1 span { color: #00d4ff; }
+  .hero p { color: #8899aa; font-size: 1.1rem; max-width: 650px; margin: 0 auto 1.5rem; }
+  .hero-stats { display: flex; justify-content: center; gap: 2rem; flex-wrap: wrap; margin-top: 1rem; }
+  .stat { text-align: center; }
+  .stat-value { font-size: 1.5rem; font-weight: 700; color: #00d4ff; }
+  .stat-label { font-size: 0.75rem; color: #667; text-transform: uppercase; letter-spacing: 0.05em; }
+  .demo-section { max-width: 1100px; margin: 0 auto; padding: 2rem 1rem; }
+  .demo-info { text-align: center; margin-bottom: 1.5rem; }
+  .demo-info h2 { font-size: 1.3rem; color: #fff; margin-bottom: 0.3rem; }
+  .demo-info p { color: #667; font-size: 0.9rem; }
+  .player-wrapper {
+    max-width: 1000px; margin: 0 auto;
+    border-radius: 12px; overflow: hidden;
+    border: 1px solid #1f2937;
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5), 0 0 60px rgba(0, 212, 255, 0.05);
+  }
+  #player { width: 100%; }
+  .features { max-width: 1100px; margin: 3rem auto; padding: 0 1rem; }
+  .features-header { text-align: center; margin-bottom: 2rem; }
+  .features-header h2 { font-size: 1.5rem; color: #fff; margin-bottom: 0.5rem; }
+  .features-header p { color: #667; }
+  .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; }
+  .feature-card {
+    background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 1.5rem; transition: border-color 0.2s;
+  }
+  .feature-card:hover { border-color: #00d4ff; }
+  .feature-card h3 { color: #fff; font-size: 1rem; margin-bottom: 0.5rem; }
+  .feature-card p { color: #8899aa; font-size: 0.85rem; line-height: 1.5; }
+  .compare { max-width: 800px; margin: 2rem auto; }
+  .compare table { width: 100%; border-collapse: collapse; }
+  .compare th { text-align: left; padding: 0.5rem; color: #fff; font-size: 0.85rem; border-bottom: 1px solid #1f2937; }
+  .compare td { padding: 0.5rem; font-size: 0.85rem; border-bottom: 1px solid #111827; }
+  .compare .yes { color: #00d4ff; }
+  .compare .no { color: #555; }
+  .cta { text-align: center; padding: 3rem 1rem; }
+  .cta-btn {
+    display: inline-block; padding: 0.8rem 2rem; background: #00d4ff; color: #000;
+    text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 1rem;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .cta-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 20px rgba(0, 212, 255, 0.3); }
+  .footer { text-align: center; padding: 2rem; color: #445; font-size: 0.8rem; border-top: 1px solid #1a2a3a; }
+  .footer a { color: #00d4ff; text-decoration: none; }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="hero-badge">Live Demo</div>
+  <h1>QN <span>Claude Web</span></h1>
+  <p>Self-hosted web frontend for Claude Code CLI. Access Claude Code from any browser, any device, anywhere on your network.</p>
+  <div class="hero-stats">
+    <div class="stat"><div class="stat-value">3</div><div class="stat-label">Commands to Install</div></div>
+    <div class="stat"><div class="stat-value">0</div><div class="stat-label">Build Steps</div></div>
+    <div class="stat"><div class="stat-value">191</div><div class="stat-label">Security Tests</div></div>
+    <div class="stat"><div class="stat-value">1</div><div class="stat-label">Python File</div></div>
+  </div>
+</div>
+
+<div class="demo-section">
+  <div class="demo-info">
+    <h2>Quick Start</h2>
+    <p>3 commands. No npm, no Docker, no build step.</p>
+  </div>
+  <div class="player-wrapper">
+    <div id="player"></div>
+  </div>
+</div>
+
+<div class="features">
+  <div class="features-header">
+    <h2>What You Get</h2>
+    <p>Everything in one self-contained Python app</p>
+  </div>
+  <div class="features-grid">
+    <div class="feature-card">
+      <h3>Real Terminal Emulator</h3>
+      <p>Full xterm.js terminal with PTY backend. Tmux session persistence survives page reloads and reconnects. Multiple tabs.</p>
+    </div>
+    <div class="feature-card">
+      <h3>Chat Interface</h3>
+      <p>Persistent conversations with streaming responses, markdown rendering, syntax highlighting, and session export.</p>
+    </div>
+    <div class="feature-card">
+      <h3>SSH Remote Servers</h3>
+      <p>5-step wizard: auto-generate SSH keys, push to remote, verify connection. Import from ~/.ssh/config. Nobody else has this.</p>
+    </div>
+    <div class="feature-card">
+      <h3>Multi-User Auth + RBAC</h3>
+      <p>Password auth with bcrypt, admin/user roles, rate limiting. Scoped terminal output per user. 191 security tests.</p>
+    </div>
+    <div class="feature-card">
+      <h3>Autonomous Mode</h3>
+      <p>Set a task, walk away. Claude works in tmux with auto-restart. Monitor progress from your phone.</p>
+    </div>
+    <div class="feature-card">
+      <h3>PWA + Mobile</h3>
+      <p>Install as a native app on your phone or tablet. Offline-capable service worker. Full functionality on any screen size.</p>
+    </div>
+  </div>
+</div>
+
+<div class="features">
+  <div class="features-header">
+    <h2>How It Compares</h2>
+    <p>Feature comparison with other Claude Code web UIs</p>
+  </div>
+  <div class="compare">
+    <table>
+      <tr><th>Feature</th><th>QN Claude Web</th><th>CloudCLI (9K stars)</th><th>claude.ai/code</th></tr>
+      <tr><td>Real Terminal (PTY + tmux)</td><td class="yes">Yes</td><td class="no">Plugin only</td><td class="no">Sandboxed VM</td></tr>
+      <tr><td>SSH Remote Servers</td><td class="yes">Yes</td><td class="no">No</td><td class="no">GitHub only</td></tr>
+      <tr><td>Multi-User Auth + RBAC</td><td class="yes">Yes</td><td class="no">No</td><td class="yes">Enterprise</td></tr>
+      <tr><td>Autonomous Mode</td><td class="yes">Yes</td><td class="no">No</td><td class="yes">Cloud only</td></tr>
+      <tr><td>Self-Hosted</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td></tr>
+      <tr><td>No Build Step</td><td class="yes">Yes</td><td class="no">React/Vite</td><td class="no">Cloud</td></tr>
+      <tr><td>PWA Mobile</td><td class="yes">Yes</td><td class="no">Responsive</td><td class="yes">Web app</td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="cta">
+  <a href="https://github.com/rayketcham-lab/qn-claude-web" class="cta-btn">View on GitHub</a>
+</div>
+
+<div class="footer">
+  <p>QN Claude Web is not affiliated with Anthropic, PBC. Apache-2.0 License. | <a href="https://github.com/rayketcham-lab/qn-claude-web">GitHub</a></p>
+</div>
+
+<script src="https://unpkg.com/asciinema-player@3.7.1/dist/bundle/asciinema-player.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  AsciinemaPlayer.create(
+    'demos/quick-start.cast',
+    document.getElementById('player'),
+    {
+      theme: 'monokai',
+      fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+      fontSize: '14px',
+      fit: 'width',
+      autoPlay: true,
+      speed: 1.2,
+      idleTimeLimit: 2,
+      terminalLineHeight: 1.3
+    }
+  );
+});
+</script>
+</body>
+</html>

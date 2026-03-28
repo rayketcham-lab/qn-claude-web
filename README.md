@@ -4,6 +4,8 @@
 
 Python + Flask + xterm.js. No build step. Vendored dependencies. One command to run.
 
+[![Watch Demo](https://img.shields.io/badge/%E2%96%B6_Watch_Demo-in_browser-d40000?style=for-the-badge&logo=asciinema)](https://rayketcham-lab.github.io/qn-claude-web/demo.html)
+
 ---
 
 ### Project Health
