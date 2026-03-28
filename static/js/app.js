@@ -938,7 +938,7 @@ class ClaudeCodeWeb {
             document.getElementById('autonomous-task-wrap').classList.toggle('hidden', !e.target.checked);
             if (e.target.checked) {
                 // Auto-set optimal autonomous flags
-                this.flags.permissionMode.value = 'bypassPermissions';
+                this.flags.permissionMode.value = 'acceptEdits';
                 this.flags.autocompactThreshold.value = '80';
                 this.flags.extendedThinking.checked = true;
                 document.getElementById('thinking-tokens-wrap').classList.remove('hidden');

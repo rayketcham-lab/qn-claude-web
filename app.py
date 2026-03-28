@@ -807,12 +807,12 @@ def build_claude_command(project_path, flags, prompt=None, remote_host=None):
     # Permission mode (replaces dangerously_skip_permissions)
     perm_mode = flags.get('permission_mode', '')
     if perm_mode:
-        allowed_modes = ('default', 'acceptEdits', 'plan', 'dontAsk', 'bypassPermissions')
+        allowed_modes = ('default', 'acceptEdits', 'plan', 'dontAsk')
         if perm_mode in allowed_modes:
             cmd.extend(['--permission-mode', perm_mode])
     elif flags.get('dangerously_skip_permissions'):
-        # Backward compat for old saved sessions
-        cmd.append('--dangerously-skip-permissions')
+        # Backward compat for old saved sessions — upgrade to acceptEdits
+        cmd.extend(['--permission-mode', 'acceptEdits'])
 
     if flags.get('verbose'):
         cmd.append('--verbose')
@@ -1806,7 +1806,7 @@ def handle_terminal_create(data):
     autonomous_task = None
     auto_restart = False
     if flags.get('autonomous'):
-        flags['permission_mode'] = 'bypassPermissions'
+        flags['permission_mode'] = 'acceptEdits'
         flags['autocompact_threshold'] = 80
         flags['extended_thinking'] = True
         flags['agent_teams'] = True
