@@ -1944,10 +1944,6 @@ def _attach_to_tmux(terminal_id, tmux_name, project_path, flags, remote_host_id,
             }
 
         # Start reader thread
-        # Debug file for terminal data analysis
-        debug_file = open('/tmp/terminal_debug.log', 'a')
-        debug_file.write(f"\n=== New terminal {terminal_id} at {datetime.now()} ===\n")
-
         # Simple rate limiting - drop excess data during burst
         # Rate-limited buffering - collect data between emits, send all at once
         emit_buffer = ['']  # Use list for nonlocal mutation

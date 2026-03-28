@@ -990,6 +990,22 @@ class TestTmuxOwnership(unittest.TestCase):
 
 
 # ===================================================================
+# Debug File Leak Prevention
+# ===================================================================
+class TestNoDebugFileLeak(unittest.TestCase):
+    """Ensure no debug file handles are opened in production code."""
+
+    def test_no_tmp_debug_log_in_source(self):
+        """app.py must not open /tmp/terminal_debug.log — it leaks fds
+        and writes terminal data to a world-readable location."""
+        app_path = os.path.join(_project_root, 'app.py')
+        with open(app_path) as f:
+            source = f.read()
+        self.assertNotIn('terminal_debug.log', source,
+                         "Debug log file reference found — remove to prevent fd leak")
+
+
+# ===================================================================
 # Config API Authorization
 # ===================================================================
 class TestConfigApiAuthorization(unittest.TestCase):
