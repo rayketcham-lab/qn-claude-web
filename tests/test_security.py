@@ -440,6 +440,20 @@ class TestBuildClaudeCommand(unittest.TestCase):
         idx = cmd.index('--disallowedTools')
         self.assertEqual(cmd[idx + 1], 'Bash,Write')
 
+    def test_allowed_tools_with_patterns(self):
+        """CLI supports patterns like Bash(git:*) — regex must allow parens/colons/asterisks."""
+        cmd = self._build(flags={'allowed_tools': 'Bash(git:*),Edit,Read'})
+        self.assertIn('--allowedTools', cmd)
+        idx = cmd.index('--allowedTools')
+        self.assertIn('Bash(git:*)', cmd[idx + 1])
+
+    def test_allowed_tools_pattern_with_path(self):
+        """Patterns like Edit(/opt/*) should be accepted."""
+        cmd = self._build(flags={'allowed_tools': 'Edit(/opt/*)'})
+        self.assertIn('--allowedTools', cmd)
+        idx = cmd.index('--allowedTools')
+        self.assertEqual(cmd[idx + 1], 'Edit(/opt/*)')
+
     # -- Additional directories filtering ----------------------------
     def test_add_dirs_valid(self):
         cmd = self._build(flags={'add_dirs': '/opt/extra\n/opt/another'})

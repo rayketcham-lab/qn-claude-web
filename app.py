@@ -856,18 +856,19 @@ def build_claude_command(project_path, flags, prompt=None, remote_host=None):
         if sanitized_fallback:
             cmd.extend(['--fallback-model', sanitized_fallback])
 
-    # Tool restrictions
+    # Tool restrictions — allow patterns like Bash(git:*), Edit(/path/*)
+    _tool_pattern = re.compile(r'^[a-zA-Z0-9._\-\(\):*/]+$')
     allowed_tools = flags.get('allowed_tools', '')
     if allowed_tools:
         tools = ','.join(t.strip() for t in str(allowed_tools).split(',')
-                         if t.strip() and re.match(r'^[a-zA-Z0-9._-]+$', t.strip()))
+                         if t.strip() and _tool_pattern.match(t.strip()))
         if tools:
             cmd.extend(['--allowedTools', tools])
 
     disallowed_tools = flags.get('disallowed_tools', '')
     if disallowed_tools:
         tools = ','.join(t.strip() for t in str(disallowed_tools).split(',')
-                         if t.strip() and re.match(r'^[a-zA-Z0-9._-]+$', t.strip()))
+                         if t.strip() and _tool_pattern.match(t.strip()))
         if tools:
             cmd.extend(['--disallowedTools', tools])
 
