@@ -24,5 +24,15 @@ KillMode=process
 Environment=PYTHONUNBUFFERED=1
 Environment=CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
 
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/claude-web/sessions /opt/claude-web/backups /opt/claude-web/certs
+ReadWritePaths=/opt/claude-web/config.json /opt/claude-web/usage.json
+CapabilityBoundingSet=
+RestrictSUIDSGID=true
+
 [Install]
 WantedBy=multi-user.target

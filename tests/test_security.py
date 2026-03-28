@@ -1018,6 +1018,28 @@ class TestTmuxOwnership(unittest.TestCase):
 # ===================================================================
 # Terminal Output Scoping
 # ===================================================================
+class TestSystemdHardening(unittest.TestCase):
+    """Verify systemd service file has security hardening directives."""
+
+    def test_no_new_privileges(self):
+        svc_path = os.path.join(_project_root, 'qn-code-assistant.service')
+        with open(svc_path) as f:
+            source = f.read()
+        self.assertIn('NoNewPrivileges=true', source)
+
+    def test_private_tmp(self):
+        svc_path = os.path.join(_project_root, 'qn-code-assistant.service')
+        with open(svc_path) as f:
+            source = f.read()
+        self.assertIn('PrivateTmp=true', source)
+
+    def test_protect_system(self):
+        svc_path = os.path.join(_project_root, 'qn-code-assistant.service')
+        with open(svc_path) as f:
+            source = f.read()
+        self.assertIn('ProtectSystem=strict', source)
+
+
 class TestInstallerPythonVersion(unittest.TestCase):
     """Verify installer checks for the correct Python version."""
 
