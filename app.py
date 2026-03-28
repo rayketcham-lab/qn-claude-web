@@ -830,7 +830,7 @@ def build_claude_command(project_path, flags, prompt=None, remote_host=None):
     # Permission mode (replaces dangerously_skip_permissions)
     perm_mode = flags.get('permission_mode', '')
     if perm_mode:
-        allowed_modes = ('default', 'acceptEdits', 'plan', 'dontAsk')
+        allowed_modes = ('default', 'acceptEdits', 'plan', 'dontAsk', 'auto')
         if perm_mode in allowed_modes:
             cmd.extend(['--permission-mode', perm_mode])
     elif flags.get('dangerously_skip_permissions'):
@@ -846,7 +846,7 @@ def build_claude_command(project_path, flags, prompt=None, remote_host=None):
 
     # Effort level
     effort = flags.get('effort_level')
-    if effort and effort in ('low', 'medium', 'high'):
+    if effort and effort in ('low', 'medium', 'high', 'max'):
         cmd.extend(['--effort', effort])
 
     # Fallback model

@@ -346,6 +346,18 @@ class TestBuildClaudeCommand(unittest.TestCase):
         idx = cmd.index('--effort')
         self.assertEqual(cmd[idx + 1], 'high')
 
+    def test_effort_level_max(self):
+        cmd = self._build(flags={'effort_level': 'max'})
+        self.assertIn('--effort', cmd)
+        idx = cmd.index('--effort')
+        self.assertEqual(cmd[idx + 1], 'max')
+
+    def test_permission_mode_auto(self):
+        cmd = self._build(flags={'permission_mode': 'auto'})
+        self.assertIn('--permission-mode', cmd)
+        idx = cmd.index('--permission-mode')
+        self.assertEqual(cmd[idx + 1], 'auto')
+
     def test_effort_level_invalid_rejected(self):
         cmd = self._build(flags={'effort_level': 'critical'})
         self.assertNotIn('--effort', cmd)

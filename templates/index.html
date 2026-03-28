@@ -253,11 +253,12 @@
                                 </div>
                                 <div class="options-field">
                                     <label>Effort</label>
-                                    <p class="options-desc">Controls how much effort Claude spends on responses. Low gives quick, concise answers. High gives the most detailed and thorough responses.</p>
+                                    <p class="options-desc">Controls how much effort Claude spends on responses. Low gives quick, concise answers. High gives detailed responses. Max enables deepest reasoning (Opus only).</p>
                                     <div class="toggle-group" id="flag-effort-level">
                                         <button type="button" class="toggle-btn" data-value="low">Low</button>
                                         <button type="button" class="toggle-btn" data-value="medium">Med</button>
                                         <button type="button" class="toggle-btn active" data-value="high">High</button>
+                                        <button type="button" class="toggle-btn" data-value="max">Max</button>
                                     </div>
                                 </div>
                                 <div class="options-field">
@@ -285,6 +286,7 @@
                                         <option value="acceptEdits">Accept Edits</option>
                                         <option value="plan">Plan Only</option>
                                         <option value="dontAsk">Don't Ask</option>
+                                        <option value="auto">Auto (AI Classifier)</option>
                                         <!-- bypassPermissions intentionally omitted — use allow/deny rules instead -->
                                     </select>
                                 </div>
