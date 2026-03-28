@@ -1016,6 +1016,38 @@ class TestTmuxOwnership(unittest.TestCase):
 
 
 # ===================================================================
+# Terminal Output Scoping
+# ===================================================================
+class TestTerminalOutputScoping(unittest.TestCase):
+    """Verify terminal output is scoped to the owning socket, not broadcast."""
+
+    def test_terminal_emit_uses_room_parameter(self):
+        """All socketio.emit('terminal_output') calls must include room=."""
+        import re
+        app_path = os.path.join(_project_root, 'app.py')
+        with open(app_path) as f:
+            source = f.read()
+        # Find all terminal_output emit calls
+        pattern = r"socketio\.emit\('terminal_output'.*?\)"
+        matches = re.findall(pattern, source, re.DOTALL)
+        for match in matches:
+            self.assertIn('room=', match,
+                          f"terminal_output emit missing room= parameter: {match[:80]}")
+
+    def test_terminal_created_uses_room_parameter(self):
+        """terminal_created emit must be scoped to requesting client."""
+        import re
+        app_path = os.path.join(_project_root, 'app.py')
+        with open(app_path) as f:
+            source = f.read()
+        pattern = r"socketio\.emit\('terminal_created'.*?\)"
+        matches = re.findall(pattern, source, re.DOTALL)
+        for match in matches:
+            self.assertIn('room=', match,
+                          f"terminal_created emit missing room= parameter: {match[:80]}")
+
+
+# ===================================================================
 # Thread Safety — active_chat_processes lock
 # ===================================================================
 class TestChatProcessLock(unittest.TestCase):

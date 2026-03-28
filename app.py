@@ -1973,7 +1973,7 @@ def _attach_to_tmux(terminal_id, tmux_name, project_path, flags, remote_host_id,
                                     socketio.emit('terminal_output', {
                                         'id': terminal_id,
                                         'data': emit_buffer[0]
-                                    })
+                                    }, room=ws_sid)
                                     emit_buffer[0] = ''
                                     last_emit_time[0] = now
                         else:
@@ -1986,7 +1986,7 @@ def _attach_to_tmux(terminal_id, tmux_name, project_path, flags, remote_host_id,
                 socketio.emit('terminal_output', {
                     'id': terminal_id,
                     'data': emit_buffer[0]
-                })
+                }, room=ws_sid)
 
         thread = threading.Thread(target=read_terminal, daemon=True)
         thread.start()
@@ -1997,7 +1997,7 @@ def _attach_to_tmux(terminal_id, tmux_name, project_path, flags, remote_host_id,
             'id': terminal_id,
             'project': project_path,
             'tmux_session': tmux_name,
-        })
+        }, room=ws_sid)
 
 
 @socketio.on('terminal_input')
