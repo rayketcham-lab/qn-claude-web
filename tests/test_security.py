@@ -1018,6 +1018,35 @@ class TestTmuxOwnership(unittest.TestCase):
 # ===================================================================
 # Terminal Output Scoping
 # ===================================================================
+class TestChatSessionsLockCoverage(unittest.TestCase):
+    """Verify chat_sessions mutations use chat_sessions_lock."""
+
+    def test_new_session_creation_uses_lock(self):
+        """Creating a new chat session must happen under lock."""
+        app_path = os.path.join(_project_root, 'app.py')
+        with open(app_path) as f:
+            source = f.read()
+        import re
+        # Count bare chat_sessions[...] = { assignments
+        assignments = re.findall(r'chat_sessions\[\w+\]\s*=\s*\{', source)
+        lock_contexts = re.findall(r'with chat_sessions_lock:', source)
+        # Should have at least as many lock contexts as assignment sites
+        self.assertGreaterEqual(len(lock_contexts), len(assignments),
+                                f"Found {len(assignments)} assignments but only {len(lock_contexts)} lock contexts")
+
+    def test_backup_snapshots_keys_under_lock(self):
+        """backup_all_sessions must snapshot keys under lock before iterating."""
+        app_path = os.path.join(_project_root, 'app.py')
+        with open(app_path) as f:
+            source = f.read()
+        # Find backup_all_sessions function
+        idx = source.find('def backup_all_sessions')
+        self.assertGreater(idx, 0)
+        func_body = source[idx:idx + 300]
+        self.assertIn('chat_sessions_lock', func_body,
+                       "backup_all_sessions must use chat_sessions_lock")
+
+
 class TestConfigThreadSafety(unittest.TestCase):
     """Verify CONFIG has a threading lock and save_config is thread-safe."""
 

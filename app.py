@@ -493,7 +493,9 @@ def watchdog_thread():
 
 def backup_all_sessions():
     """Backup all active sessions to disk"""
-    for session_id in list(chat_sessions.keys()):
+    with chat_sessions_lock:
+        session_ids = list(chat_sessions.keys())
+    for session_id in session_ids:
         try:
             save_session(session_id)
         except Exception as e:
@@ -1623,16 +1625,17 @@ def get_persistent_session():
 
     # Create new persistent session
     session_id = str(uuid.uuid4())
-    chat_sessions[session_id] = {
-        'id': session_id,
-        'project': chat_cwd,
-        'project_name': 'Claude',
-        'flags': {},
-        'remote_host_id': None,
-        'messages': [],
-        'created': datetime.now().isoformat(),
-        'status': 'ready'
-    }
+    with chat_sessions_lock:
+        chat_sessions[session_id] = {
+            'id': session_id,
+            'project': chat_cwd,
+            'project_name': 'Claude',
+            'flags': {},
+            'remote_host_id': None,
+            'messages': [],
+            'created': datetime.now().isoformat(),
+            'status': 'ready'
+        }
     CONFIG['persistent_session_id'] = session_id
     save_config(CONFIG)
     save_session(session_id)
@@ -1647,16 +1650,17 @@ def new_chat_session():
     data = request.json or {}
     session_id = str(uuid.uuid4())
 
-    chat_sessions[session_id] = {
-        'id': session_id,
-        'project': data.get('project', ''),
-        'project_name': Path(data.get('project', '')).name,
-        'flags': data.get('flags', {}),
-        'remote_host_id': data.get('remote_host_id'),
-        'messages': [],
-        'created': datetime.now().isoformat(),
-        'status': 'ready'
-    }
+    with chat_sessions_lock:
+        chat_sessions[session_id] = {
+            'id': session_id,
+            'project': data.get('project', ''),
+            'project_name': Path(data.get('project', '')).name,
+            'flags': data.get('flags', {}),
+            'remote_host_id': data.get('remote_host_id'),
+            'messages': [],
+            'created': datetime.now().isoformat(),
+            'status': 'ready'
+        }
 
     # Save to disk
     save_session(session_id)
