@@ -177,7 +177,7 @@ def load_config():
     return defaults
 
 def save_config(config_dict):
-    """Save config to disk"""
+    """Save config to disk (thread-safe via config_lock)."""
     to_save = {k: v for k, v in config_dict.items()
                if k not in ('sessions_dir', 'backup_dir')}
     # Convert Path objects to strings for JSON
@@ -185,12 +185,14 @@ def save_config(config_dict):
         if isinstance(v, Path):
             to_save[k] = str(v)
     try:
-        with open(CONFIG_FILE, 'w') as f:
-            json.dump(to_save, f, indent=2)
+        with config_lock:
+            with open(CONFIG_FILE, 'w') as f:
+                json.dump(to_save, f, indent=2)
     except Exception as e:
         logger.error("Config save error: %s", e)
 
 CONFIG = load_config()
+config_lock = threading.Lock()
 CONFIG['sessions_dir'] = Path(__file__).parent / 'sessions'
 CONFIG['backup_dir'] = Path(__file__).parent / 'backups'
 
@@ -1213,15 +1215,15 @@ def api_update_config():
                 c['content'] = str(c.get('content', ''))[:10000]
                 c['name'] = str(c.get('name', 'Custom Agent'))[:50]
         data['custom_agents'] = [c for c in customs if isinstance(c, dict)]
+    # Validate projects_root BEFORE applying any changes
+    if 'projects_root' in data:
+        new_root = os.path.expanduser(data['projects_root'])
+        if not os.path.isdir(new_root):
+            return jsonify({'success': False, 'error': f'Invalid directory: {data["projects_root"]}'}), 400
+        data['projects_root'] = new_root
     for key in allowed_keys:
         if key in data:
             CONFIG[key] = data[key]
-    if 'projects_root' in data:
-        new_root = os.path.expanduser(data['projects_root'])
-        if os.path.isdir(new_root):
-            CONFIG['projects_root'] = new_root
-        else:
-            return jsonify({'success': False, 'error': f'Invalid directory: {data["projects_root"]}'}), 400
     save_config(CONFIG)
     return jsonify({'success': True})
 

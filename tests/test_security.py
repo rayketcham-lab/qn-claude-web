@@ -1018,6 +1018,40 @@ class TestTmuxOwnership(unittest.TestCase):
 # ===================================================================
 # Terminal Output Scoping
 # ===================================================================
+class TestConfigThreadSafety(unittest.TestCase):
+    """Verify CONFIG has a threading lock and save_config is thread-safe."""
+
+    def test_config_lock_exists(self):
+        from app import config_lock
+        import threading
+        self.assertIsInstance(config_lock, type(threading.Lock()))
+
+    def test_save_config_uses_lock(self):
+        """save_config must acquire config_lock before writing."""
+        app_path = os.path.join(_project_root, 'app.py')
+        with open(app_path) as f:
+            source = f.read()
+        # Find save_config function body — it should contain config_lock
+        import re
+        match = re.search(r'def save_config\(.*?\n(?=\ndef |\nCONFIG)', source, re.DOTALL)
+        self.assertIsNotNone(match, "save_config function not found")
+        self.assertIn('config_lock', match.group(),
+                       "save_config must use config_lock for thread-safe writes")
+
+    def test_config_validated_before_applied(self):
+        """projects_root must be validated BEFORE CONFIG is mutated."""
+        app_path = os.path.join(_project_root, 'app.py')
+        with open(app_path) as f:
+            source = f.read()
+        # The validation check should come before the loop that sets CONFIG[key]
+        validate_pos = source.find("if not os.path.isdir(new_root)")
+        apply_pos = source.find("for key in allowed_keys:")
+        self.assertGreater(apply_pos, 0)
+        self.assertGreater(validate_pos, 0)
+        self.assertLess(validate_pos, apply_pos,
+                         "projects_root validation must happen before CONFIG mutation loop")
+
+
 class TestTerminalOutputScoping(unittest.TestCase):
     """Verify terminal output is scoped to the owning socket, not broadcast."""
 
