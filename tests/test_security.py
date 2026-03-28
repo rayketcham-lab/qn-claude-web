@@ -1018,6 +1018,28 @@ class TestTmuxOwnership(unittest.TestCase):
 # ===================================================================
 # Terminal Output Scoping
 # ===================================================================
+class TestPasswordPolicy(unittest.TestCase):
+    """Verify password minimum length is enforced."""
+
+    def test_minimum_length_is_8(self):
+        """Password minimum must be 8 characters, not 4."""
+        app_path = os.path.join(_project_root, 'app.py')
+        with open(app_path) as f:
+            source = f.read()
+        self.assertNotIn("len(password) < 4", source,
+                         "Password minimum is still 4 — must be 8")
+        self.assertIn("len(password) < 8", source,
+                       "Password minimum should be 8 characters")
+
+    def test_error_message_mentions_8(self):
+        """Error message must say 8, not 4."""
+        app_path = os.path.join(_project_root, 'app.py')
+        with open(app_path) as f:
+            source = f.read()
+        self.assertNotIn("at least 4 characters", source)
+        self.assertIn("at least 8 characters", source)
+
+
 class TestChatSessionsLockCoverage(unittest.TestCase):
     """Verify chat_sessions mutations use chat_sessions_lock."""
 

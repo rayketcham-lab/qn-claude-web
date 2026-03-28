@@ -1075,8 +1075,8 @@ def auth_setup():
 
     if not username or not password:
         return jsonify({'error': 'Username and password required'}), 400
-    if len(password) < 4:
-        return jsonify({'error': 'Password must be at least 4 characters'}), 400
+    if len(password) < 8:
+        return jsonify({'error': 'Password must be at least 8 characters'}), 400
 
     pw_hash = generate_password_hash(password)
     CONFIG['auth'] = {
@@ -2870,8 +2870,8 @@ def api_create_user():
 
     if not username or not password:
         return jsonify({'error': 'Username and password required'}), 400
-    if len(password) < 4:
-        return jsonify({'error': 'Password must be at least 4 characters'}), 400
+    if len(password) < 8:
+        return jsonify({'error': 'Password must be at least 8 characters'}), 400
     if role not in ('admin', 'user'):
         return jsonify({'error': 'Role must be admin or user'}), 400
 
@@ -2922,8 +2922,8 @@ def api_change_user_password(username):
 
     data = request.json or {}
     password = data.get('password', '').strip()
-    if not password or len(password) < 4:
-        return jsonify({'error': 'Password must be at least 4 characters'}), 400
+    if not password or len(password) < 8:
+        return jsonify({'error': 'Password must be at least 8 characters'}), 400
 
     users = CONFIG.get('users', [])
     for u in users:
