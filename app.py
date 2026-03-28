@@ -1536,8 +1536,8 @@ def api_remote_projects(host_id):
 
     elif remote_host['mode'] == 'ssh':
         remote_path = remote_host.get('default_path', '~')
-        # Sanitize remote path to prevent command injection in the Python string
-        safe_remote_path = remote_path.replace("'", "").replace('"', '').replace('\\', '')
+        # Sanitize remote path — shlex.quote prevents shell injection
+        safe_remote_path = shlex.quote(remote_path.strip())
         # Validate SSH port
         try:
             ssh_port = int(remote_host.get('port', 22))
@@ -1556,9 +1556,9 @@ def api_remote_projects(host_id):
             else:
                 logger.warning("SSH key file not found: %s", key_path)
         ssh_cmd.append(f"{remote_host['username']}@{remote_host['hostname']}")
-        remote_script = f'''python3 -c "
-import os, json
-root = os.path.expanduser('{safe_remote_path}')
+        remote_script = '''python3 -c "
+import os, json, sys
+root = os.path.expanduser(sys.argv[1])
 result = []
 for item in sorted(os.listdir(root)):
     full = os.path.join(root, item)
@@ -1577,7 +1577,7 @@ for item in sorted(os.listdir(root)):
             )
         ))
 print(json.dumps(result))
-"'''
+" ''' + safe_remote_path
         ssh_cmd.append(remote_script)
         try:
             result = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=15)

@@ -12,6 +12,7 @@ Uses unittest (no external dependencies).
 """
 
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -986,6 +987,43 @@ class TestTmuxOwnership(unittest.TestCase):
             args=[], returncode=0, stdout='QN_OWNER=user=name\n', stderr=''
         )
         self.assertEqual(_tmux_get_owner('qn-abcdef01'), 'user=name')
+
+
+# ===================================================================
+# Remote Path Injection Prevention
+# ===================================================================
+class TestRemotePathInjection(unittest.TestCase):
+    """Verify remote paths are sanitized against shell/Python injection."""
+
+    def test_shlex_quote_used_on_remote_path(self):
+        """The app must use shlex.quote (not manual denylist) for remote paths."""
+        app_path = os.path.join(_project_root, 'app.py')
+        with open(app_path) as f:
+            source = f.read()
+        self.assertNotIn(".replace(\"'\", \"\")", source,
+                         "Old denylist sanitization still present — use shlex.quote instead")
+
+    def test_sys_argv_used_not_string_interpolation(self):
+        """Remote script must use sys.argv[1] not f-string interpolation for path."""
+        app_path = os.path.join(_project_root, 'app.py')
+        with open(app_path) as f:
+            source = f.read()
+        self.assertIn('sys.argv[1]', source,
+                       "Remote script should receive path via sys.argv, not string interpolation")
+
+    def test_shlex_quote_handles_injection_payload(self):
+        """shlex.quote must neutralize common injection payloads."""
+        payloads = [
+            "~; rm -rf /",
+            "$(whoami)",
+            "`id`",
+            "~/projects\n; cat /etc/passwd",
+            "'); print('pwned",
+        ]
+        for payload in payloads:
+            quoted = shlex.quote(payload)
+            self.assertTrue(quoted.startswith("'"), f"Not quoted: {quoted}")
+            self.assertTrue(quoted.endswith("'"), f"Not quoted: {quoted}")
 
 
 # ===================================================================
