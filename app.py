@@ -1180,6 +1180,12 @@ def api_get_config():
 def api_update_config():
     """Update configuration and persist"""
     data = request.json or {}
+    # Security-sensitive keys require admin role
+    admin_only_keys = {'allowed_paths', 'allow_full_browsing', 'ssl_enabled', 'ssl_cert', 'ssl_key'}
+    if admin_only_keys & set(data.keys()):
+        user = get_current_user()
+        if user and user.get('role') != 'admin':
+            return jsonify({'error': 'Admin access required for security settings'}), 403
     allowed_keys = [
         'projects_root', 'process_timeout_minutes',
         'max_concurrent_terminals', 'max_concurrent_chats',

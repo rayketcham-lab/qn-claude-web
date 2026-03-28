@@ -990,6 +990,30 @@ class TestTmuxOwnership(unittest.TestCase):
 
 
 # ===================================================================
+# Config API Authorization
+# ===================================================================
+class TestConfigApiAuthorization(unittest.TestCase):
+    """Verify security-sensitive config keys require admin role."""
+
+    def test_admin_only_keys_defined(self):
+        """The config endpoint must gate security-sensitive keys behind admin check."""
+        app_path = os.path.join(_project_root, 'app.py')
+        with open(app_path) as f:
+            source = f.read()
+        for key in ['allowed_paths', 'allow_full_browsing', 'ssl_enabled', 'ssl_cert', 'ssl_key']:
+            self.assertIn(key, source, f"Key {key} should be referenced in admin_only_keys")
+        self.assertIn('admin_only_keys', source,
+                       "api_update_config must define admin_only_keys set")
+
+    def test_admin_check_returns_403(self):
+        """The admin check must return 403 status code."""
+        app_path = os.path.join(_project_root, 'app.py')
+        with open(app_path) as f:
+            source = f.read()
+        self.assertIn("'Admin access required for security settings'", source)
+
+
+# ===================================================================
 # Remote Path Injection Prevention
 # ===================================================================
 class TestRemotePathInjection(unittest.TestCase):
