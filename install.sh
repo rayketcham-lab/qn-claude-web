@@ -3,7 +3,7 @@
 # QN Code Assistant - Secure Self-Verifying Installer
 #
 # Self-contained installer with vendored Python dependencies.
-# Only requires Python 3.8+ on the target system. No pip, no venv, no internet.
+# Only requires Python 3.10+ on the target system. No pip, no venv, no internet.
 #
 # Usage:
 #   ./install.sh              Install (verify + setup)
@@ -25,14 +25,14 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-VERSION="1.5.1"
+VERSION="1.6.0"
 
 # SHA-256 hashes baked at build time
 declare -A FILE_HASHES=(
-    ["app.py"]="d3542979b27994b423c6011ef7c9ed0f1ba98b4d4f7294725ab42f239a1f625c"
-    ["static/js/app.js"]="0650a346352809798d890bdc77492b18731e731241d6818b525dd5e2096707c5"
+    ["app.py"]="507630b5d521fcd3a368223746111ab696a7939e52e477cdf82f9ae2a47344ca"
+    ["static/js/app.js"]="6679f6b15c452046dc689f82ec0107a03952073aaeee04e733c4123ad93d6379"
     ["static/css/style.css"]="5fb199bc175bef59b5cb4efa14882975385f7dd443535f575159e1863542b9c8"
-    ["templates/index.html"]="80869d43301945df2d1563d2791706b6475b8a86873c93be840eaec78426ddfb"
+    ["templates/index.html"]="4f8138703efcab691f5bde10fc32b3fdf7419d3eb1650105d139c829d6125eb2"
     ["templates/login.html"]="5e77d824bad5af53a817ea7cf554992cb1d77e2050a41bd0add00880d5454aac"
     ["requirements.txt"]="4122e97cfa01caa3042e3d3b3e35a778a9e658c84a62a31177f19c041785c8d5"
     ["static/manifest.json"]="c2872d517d42875cd02f0dfdb5e9a8d79522097dd1b016450fc3afe59cace431"
@@ -41,7 +41,7 @@ declare -A FILE_HASHES=(
     ["apache-proxy.conf"]="5eab0edd895142e586693d410f82146cea4fd7dc0327c684cbf4b80c65fda248"
     ["maintenance.sh"]="69cb8b8938771c83b810d4736113bb1dfdb4a225d83858eb3e475a284ae0ecdc"
     ["start.sh"]="3c321fffe379a6ce9d1d3b782542e0c69e2348874a7fb5e26826d2f25b5306bc"
-    ["qn-code-assistant.service"]="722ebb970d9c40ba4ea95f1424424f0041c4518e774ba8c027d008b6a725e6d4"
+    ["qn-code-assistant.service"]="40dbf2672adce192d5a83d4edced714d130c3c252a3d6b32dcb35deeccb26028"
 )
 
 VENDOR_HASH="1ddb9ad9384df343937a83d208f5f3d7ff743170118973b0f6fcde65e20f3765"
@@ -208,15 +208,15 @@ check_prerequisites() {
     log_step "Checking prerequisites..."
     local missing=0
 
-    # Python 3.8+
+    # Python 3.10+
     if command -v python3 &> /dev/null; then
         local py_version
         py_version="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
         local py_major py_minor
         py_major="$(echo "${py_version}" | cut -d. -f1)"
         py_minor="$(echo "${py_version}" | cut -d. -f2)"
-        if [[ "${py_major}" -lt 3 ]] || { [[ "${py_major}" -eq 3 ]] && [[ "${py_minor}" -lt 8 ]]; }; then
-            log_error "Python 3.8+ required, found ${py_version}"
+        if [[ "${py_major}" -lt 3 ]] || { [[ "${py_major}" -eq 3 ]] && [[ "${py_minor}" -lt 10 ]]; }; then
+            log_error "Python 3.10+ required, found ${py_version}"
             missing=1
         else
             log_info "Python ${py_version} found"
@@ -554,7 +554,7 @@ do_install() {
     echo -e "  Version:     ${CYAN}${VERSION}${NC}"
     echo -e "  Install dir: ${CYAN}${INSTALL_DIR}${NC}"
     echo -e "  Access URL:  ${CYAN}${protocol}://${ip_addr}:${summary_port}${NC}"
-    echo -e "  Prereqs:     ${CYAN}Python 3.8+ only (deps vendored)${NC}"
+    echo -e "  Prereqs:     ${CYAN}Python 3.10+ only (deps vendored)${NC}"
     echo ""
     echo -e "  Quick start:"
     echo -e "    ${YELLOW}cd ${INSTALL_DIR} && ./start.sh${NC}"
@@ -642,7 +642,7 @@ main() {
             echo "  ./install.sh --uninstall    Remove service and cleanup"
             echo "  ./install.sh --help         Show this help"
             echo ""
-            echo "Self-contained: only requires Python 3.8+ (no pip, no venv, no internet)"
+            echo "Self-contained: only requires Python 3.10+ (no pip, no venv, no internet)"
             ;;
         -y|--non-interactive)
             NONINTERACTIVE=1
