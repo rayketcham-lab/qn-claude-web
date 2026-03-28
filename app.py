@@ -2141,7 +2141,10 @@ def handle_terminal_reconnect(data):
             emit('terminal_error', {'error': 'Too many concurrent terminals. Please close one first.'})
             return
 
-    terminal_id = str(uuid.uuid4())
+        # Reserve slot inside lock to prevent double-reconnect TOCTOU race
+        terminal_id = str(uuid.uuid4())
+        active_terminals[terminal_id] = {'reserved': True}
+
     project_path = data.get('project', os.path.expanduser('~'))
     log_file = os.path.join(AGENT_LOG_DIR, f'{tmux_name}.log')
 

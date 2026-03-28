@@ -1042,6 +1042,26 @@ class TestTmuxOwnership(unittest.TestCase):
 # ===================================================================
 # Terminal Output Scoping
 # ===================================================================
+class TestTerminalReconnectTOCTOU(unittest.TestCase):
+    """Verify terminal reconnect reserves slot inside lock."""
+
+    def test_slot_reserved_inside_lock(self):
+        """handle_terminal_reconnect must reserve active_terminals slot inside lock."""
+        app_path = os.path.join(_project_root, 'app.py')
+        with open(app_path) as f:
+            source = f.read()
+        # Find the reconnect handler
+        idx = source.find('def handle_terminal_reconnect')
+        func_body = source[idx:idx + 1600]
+        # The reservation (active_terminals[terminal_id]) must be inside the
+        # with active_terminals_lock: block
+        lock_start = func_body.find('with active_terminals_lock:')
+        reservation = func_body.find("active_terminals[terminal_id]")
+        self.assertGreater(lock_start, 0, "Lock block not found in reconnect handler")
+        self.assertGreater(reservation, lock_start,
+                           "Slot reservation must be inside the active_terminals_lock block")
+
+
 class TestSystemdHardening(unittest.TestCase):
     """Verify systemd service file has security hardening directives."""
 
