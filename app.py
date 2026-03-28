@@ -897,6 +897,20 @@ def build_claude_command(project_path, flags, prompt=None, remote_host=None):
         system_prompt = str(system_prompt)[:10000]
         cmd.extend(['--append-system-prompt', system_prompt])
 
+    # Session name
+    session_name = flags.get('session_name', '')
+    if session_name:
+        sanitized_name = re.sub(r'[^\w\s\-.]', '', str(session_name))[:100].strip()
+        if sanitized_name:
+            cmd.extend(['--name', sanitized_name])
+
+    # Agent selection
+    agent = flags.get('agent', '')
+    if agent:
+        sanitized_agent = re.sub(r'[^\w\-.]', '', str(agent))[:50].strip()
+        if sanitized_agent:
+            cmd.extend(['--agent', sanitized_agent])
+
     # Print mode (-p): one-shot query
     if flags.get('print_mode'):
         cmd.insert(1, '-p')  # -p goes right after 'claude'

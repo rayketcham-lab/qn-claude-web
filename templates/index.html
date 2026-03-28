@@ -325,6 +325,16 @@
                                     <input type="number" id="flag-autocompact-threshold" min="50" max="100" value="80">
                                 </div>
                                 <div class="options-field">
+                                    <label>Session Name</label>
+                                    <p class="options-desc">Display name for this session (shown in /resume list and terminal title).</p>
+                                    <input type="text" id="flag-session-name" placeholder="e.g. Fix auth bug" maxlength="100" autocomplete="off">
+                                </div>
+                                <div class="options-field">
+                                    <label>Agent</label>
+                                    <p class="options-desc">Select a specific agent for this session (e.g. architect, builder, tester).</p>
+                                    <input type="text" id="flag-agent" placeholder="e.g. builder" maxlength="50" autocomplete="off">
+                                </div>
+                                <div class="options-field">
                                     <label>System Prompt Append</label>
                                     <p class="options-desc">Custom instructions appended to Claude's system prompt for this session. Use for project-specific rules, coding style preferences, or task context that Claude should always follow.</p>
                                     <textarea id="flag-system-prompt" rows="4" maxlength="10000" placeholder="Additional instructions for this session..."></textarea>

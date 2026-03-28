@@ -109,6 +109,8 @@ class ClaudeCodeWeb {
             effortLevel: document.getElementById('flag-effort-level'),
             extendedThinking: document.getElementById('flag-extended-thinking'),
             thinkingTokens: document.getElementById('flag-thinking-tokens'),
+            sessionName: document.getElementById('flag-session-name'),
+            agent: document.getElementById('flag-agent'),
             systemPrompt: document.getElementById('flag-system-prompt'),
             fallbackModel: document.getElementById('flag-fallback-model'),
             autocompactThreshold: document.getElementById('flag-autocompact-threshold'),
@@ -3852,6 +3854,8 @@ class ClaudeCodeWeb {
             thinking_tokens: this.flags.extendedThinking.checked
                 ? (parseInt(this.flags.thinkingTokens.value) || 31999)
                 : null,
+            session_name: this.flags.sessionName?.value?.trim() || null,
+            agent: this.flags.agent?.value?.trim() || null,
             system_prompt: this.flags.systemPrompt.value.trim() || null,
             fallback_model: this.flags.fallbackModel.value || null,
             autocompact_threshold: this.flags.autocompactThreshold.value

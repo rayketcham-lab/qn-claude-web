@@ -358,6 +358,30 @@ class TestBuildClaudeCommand(unittest.TestCase):
         idx = cmd.index('--permission-mode')
         self.assertEqual(cmd[idx + 1], 'auto')
 
+    def test_session_name_passed(self):
+        cmd = self._build(flags={'session_name': 'Fix auth bug'})
+        self.assertIn('--name', cmd)
+        idx = cmd.index('--name')
+        self.assertEqual(cmd[idx + 1], 'Fix auth bug')
+
+    def test_session_name_sanitized(self):
+        cmd = self._build(flags={'session_name': 'test; rm -rf /'})
+        self.assertIn('--name', cmd)
+        idx = cmd.index('--name')
+        self.assertNotIn(';', cmd[idx + 1])
+
+    def test_agent_flag_passed(self):
+        cmd = self._build(flags={'agent': 'builder'})
+        self.assertIn('--agent', cmd)
+        idx = cmd.index('--agent')
+        self.assertEqual(cmd[idx + 1], 'builder')
+
+    def test_agent_flag_sanitized(self):
+        cmd = self._build(flags={'agent': 'builder; whoami'})
+        self.assertIn('--agent', cmd)
+        idx = cmd.index('--agent')
+        self.assertNotIn(';', cmd[idx + 1])
+
     def test_effort_level_invalid_rejected(self):
         cmd = self._build(flags={'effort_level': 'critical'})
         self.assertNotIn('--effort', cmd)
