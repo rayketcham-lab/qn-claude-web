@@ -1018,6 +1018,26 @@ class TestTmuxOwnership(unittest.TestCase):
 # ===================================================================
 # Terminal Output Scoping
 # ===================================================================
+class TestInstallerPythonVersion(unittest.TestCase):
+    """Verify installer checks for the correct Python version."""
+
+    def test_installer_requires_310(self):
+        """build-installer.sh must require Python 3.10+, not 3.8."""
+        installer_path = os.path.join(_project_root, 'build-installer.sh')
+        with open(installer_path) as f:
+            source = f.read()
+        self.assertNotIn('lt 8', source, "Installer still checks for 3.8")
+        self.assertIn('lt 10', source, "Installer should check for 3.10+")
+
+    def test_release_requires_310(self):
+        """build-release.sh must require Python 3.10+, not 3.8."""
+        release_path = os.path.join(_project_root, 'build-release.sh')
+        with open(release_path) as f:
+            source = f.read()
+        self.assertNotIn('lt 8', source, "Release script still checks for 3.8")
+        self.assertIn('lt 10', source, "Release script should check for 3.10+")
+
+
 class TestPasswordPolicy(unittest.TestCase):
     """Verify password minimum length is enforced."""
 

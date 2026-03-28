@@ -106,7 +106,7 @@ cat > "${INSTALLER}" << 'INSTALLER_HEADER'
 # QN Code Assistant - Secure Self-Verifying Installer
 #
 # Self-contained installer with vendored Python dependencies.
-# Only requires Python 3.8+ on the target system. No pip, no venv, no internet.
+# Only requires Python 3.10+ on the target system. No pip, no venv, no internet.
 #
 # Usage:
 #   ./install.sh              Install (verify + setup)
@@ -322,15 +322,15 @@ check_prerequisites() {
     log_step "Checking prerequisites..."
     local missing=0
 
-    # Python 3.8+
+    # Python 3.10+
     if command -v python3 &> /dev/null; then
         local py_version
         py_version="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
         local py_major py_minor
         py_major="$(echo "${py_version}" | cut -d. -f1)"
         py_minor="$(echo "${py_version}" | cut -d. -f2)"
-        if [[ "${py_major}" -lt 3 ]] || { [[ "${py_major}" -eq 3 ]] && [[ "${py_minor}" -lt 8 ]]; }; then
-            log_error "Python 3.8+ required, found ${py_version}"
+        if [[ "${py_major}" -lt 3 ]] || { [[ "${py_major}" -eq 3 ]] && [[ "${py_minor}" -lt 10 ]]; }; then
+            log_error "Python 3.10+ required, found ${py_version}"
             missing=1
         else
             log_info "Python ${py_version} found"
@@ -668,7 +668,7 @@ do_install() {
     echo -e "  Version:     ${CYAN}${VERSION}${NC}"
     echo -e "  Install dir: ${CYAN}${INSTALL_DIR}${NC}"
     echo -e "  Access URL:  ${CYAN}${protocol}://${ip_addr}:${summary_port}${NC}"
-    echo -e "  Prereqs:     ${CYAN}Python 3.8+ only (deps vendored)${NC}"
+    echo -e "  Prereqs:     ${CYAN}Python 3.10+ only (deps vendored)${NC}"
     echo ""
     echo -e "  Quick start:"
     echo -e "    ${YELLOW}cd ${INSTALL_DIR} && ./start.sh${NC}"
@@ -756,7 +756,7 @@ main() {
             echo "  ./install.sh --uninstall    Remove service and cleanup"
             echo "  ./install.sh --help         Show this help"
             echo ""
-            echo "Self-contained: only requires Python 3.8+ (no pip, no venv, no internet)"
+            echo "Self-contained: only requires Python 3.10+ (no pip, no venv, no internet)"
             ;;
         -y|--non-interactive)
             NONINTERACTIVE=1

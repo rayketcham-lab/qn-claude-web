@@ -192,7 +192,7 @@ while [[ $# -gt 0 ]]; do
             echo "  ${0##*/} --help                   Show this help"
             echo ""
             echo "Self-contained: includes all files + vendored Python dependencies."
-            echo "Only requires Python 3.8+ on the target system."
+            echo "Only requires Python 3.10+ on the target system."
             echo ""
             echo "Payload: ${FILE_COUNT} files, SHA-256: ${PAYLOAD_HASH}"
             exit 0
@@ -225,8 +225,8 @@ fi
 py_version="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
 py_major="$(echo "${py_version}" | cut -d. -f1)"
 py_minor="$(echo "${py_version}" | cut -d. -f2)"
-if [[ "${py_major}" -lt 3 ]] || { [[ "${py_major}" -eq 3 ]] && [[ "${py_minor}" -lt 8 ]]; }; then
-    log_error "Python 3.8+ required, found ${py_version}"
+if [[ "${py_major}" -lt 3 ]] || { [[ "${py_major}" -eq 3 ]] && [[ "${py_minor}" -lt 10 ]]; }; then
+    log_error "Python 3.10+ required, found ${py_version}"
     exit 1
 fi
 log_info "Python ${py_version} found"
@@ -260,7 +260,7 @@ log_info "Payload verified"
 # Create install directory
 mkdir -p "${INSTALL_DIR}"
 
-# Extract using Python (no external tools needed beyond Python 3.8+)
+# Extract using Python (no external tools needed beyond Python 3.10+)
 tail -n +"${PAYLOAD_LINE}" "$0" | python3 -c "
 import zipfile, io, base64, sys, os
 
