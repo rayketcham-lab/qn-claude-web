@@ -65,7 +65,7 @@ logging.basicConfig(
 logger = logging.getLogger('qnca')
 
 # Version info
-VERSION = "1.5.1"
+VERSION = "1.6.0"
 START_TIME = datetime.now()
 
 # Regex to filter out DA (Device Attributes) query responses that cause terminal display garbage

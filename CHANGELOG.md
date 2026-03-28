@@ -1,6 +1,46 @@
 # Changelog
 
-All notable changes to QN Code Assistant.
+All notable changes to QN Claude Web (formerly QN Code Assistant).
+
+## [1.6.0] - 2026-03-28
+
+### Security (7 fixes)
+- **CORS wildcard removed** — `cors_allowed_origins=None` replaced with explicit origin list derived from config; prevents cross-site WebSocket hijacking
+- **sshpass credential exposure fixed** — replaced `sshpass -p` (visible in /proc) with `sshpass -e` (env var)
+- **Remote path injection fixed** — replaced manual denylist sanitization with `shlex.quote()` + `sys.argv` to prevent RCE on remote hosts
+- **Config API admin gate** — security-sensitive keys (`allowed_paths`, `ssl_*`) now require admin role
+- **Terminal output scoped** — added `room=ws_sid` to all `socketio.emit` calls; prevents multi-user terminal data leakage
+- **Password minimum raised** — increased from 4 to 8 characters
+- **Systemd hardening** — added `NoNewPrivileges`, `PrivateTmp`, `ProtectSystem=strict`, `CapabilityBoundingSet`
+
+### Fixed (6 fixes)
+- **Debug file descriptor leak** — removed `open('/tmp/terminal_debug.log')` that leaked one fd per terminal and wrote to world-readable /tmp
+- **active_chat_processes race** — added `threading.Lock()` on all mutation sites
+- **CONFIG write race** — added `config_lock` with lock inside `save_config()`
+- **chat_sessions lock gaps** — wrapped 3 unlocked creation/iteration sites
+- **Config validation order** — `projects_root` now validated BEFORE CONFIG is mutated
+- **terminal_reconnect TOCTOU** — slot reserved inside lock to prevent double-reconnect race
+
+### Added
+- **`auto` permission mode** — Claude Code CLI v2.1.86 AI classifier mode
+- **`max` effort level** — deepest reasoning (Opus only)
+- **`--name` flag** — session display name for /resume list
+- **`--agent` flag** — select specific agent for session
+- **Tool patterns** — `Bash(git:*)` syntax now accepted in allowedTools (was silently stripped)
+- **Apache-2.0 license**
+
+### Changed
+- **Repo renamed** — `qn-code-assistant` → `qn-claude-web` on GitHub
+- **Claude config** — symlinks replaced with actual file copies (rules, skills, tests, agents)
+- **README** — complete rewrite with badges, architecture diagram, security matrix
+- **Autonomous mode** — uses `acceptEdits` instead of `bypassPermissions`
+- **`bypassPermissions` removed** — from UI dropdown and backend allowed modes
+- **Installer Python check** — raised from 3.8 to 3.10 (matches vendored Werkzeug requirement)
+- **Settings.json** — merged deny rules from shared config (force push, pipe-to-bash, rm -rf)
+
+### Tests
+- **191 tests** (was 155 with 4 failures) — 36 new tests across 14 new test classes
+- All 4 previously failing tests fixed (env isolation + permission mode update)
 
 ## [1.5.1] - 2026-02-20
 

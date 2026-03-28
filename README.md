@@ -290,4 +290,4 @@ installed Claude Code CLI.
 
 ## License
 
-License TBD. Currently for personal/internal use.
+Apache-2.0 — see [LICENSE](LICENSE).
