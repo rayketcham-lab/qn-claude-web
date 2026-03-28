@@ -33,7 +33,27 @@ from flask_socketio import SocketIO, emit
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins=None, async_mode='threading',
+
+
+def _get_cors_origins():
+    """Build CORS origin list from config. Returns list of allowed origins
+    or '*' only if explicitly configured (never default to wildcard)."""
+    origins = CONFIG.get('cors_origins', [])
+    if origins:
+        return origins
+    # Default: allow same-origin requests from any interface on the configured port
+    port = CONFIG.get('port', 5001)
+    ssl = CONFIG.get('ssl_enabled', False)
+    scheme = 'https' if ssl else 'http'
+    return [
+        f'{scheme}://localhost:{port}',
+        f'{scheme}://127.0.0.1:{port}',
+        f'{scheme}://192.168.1.241:{port}',
+    ]
+
+
+socketio = SocketIO(app, cors_allowed_origins=_get_cors_origins,
+                    async_mode='threading',
                     ping_timeout=60, ping_interval=25)
 
 # Logging

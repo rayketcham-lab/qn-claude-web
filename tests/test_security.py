@@ -989,6 +989,42 @@ class TestTmuxOwnership(unittest.TestCase):
 
 
 # ===================================================================
+# CORS Origin Validation
+# ===================================================================
+class TestCorsOrigins(unittest.TestCase):
+    """Verify CORS origins are explicit, never wildcard."""
+
+    def test_cors_origins_not_wildcard(self):
+        """_get_cors_origins must never return None or '*'."""
+        from app import _get_cors_origins
+        origins = _get_cors_origins()
+        self.assertIsNotNone(origins)
+        self.assertNotEqual(origins, '*')
+        self.assertIsInstance(origins, list)
+
+    def test_cors_origins_returns_list(self):
+        """Origins must be a list of URL strings."""
+        from app import _get_cors_origins
+        origins = _get_cors_origins()
+        for origin in origins:
+            self.assertTrue(origin.startswith('http'), f"Bad origin: {origin}")
+
+    def test_cors_custom_origins_from_config(self):
+        """When cors_origins is set in CONFIG, those are returned."""
+        from app import _get_cors_origins, CONFIG
+        original = CONFIG.get('cors_origins')
+        try:
+            CONFIG['cors_origins'] = ['https://example.com:5001']
+            origins = _get_cors_origins()
+            self.assertEqual(origins, ['https://example.com:5001'])
+        finally:
+            if original is None:
+                CONFIG.pop('cors_origins', None)
+            else:
+                CONFIG['cors_origins'] = original
+
+
+# ===================================================================
 # Runner
 # ===================================================================
 if __name__ == '__main__':
