@@ -295,6 +295,7 @@ os.chmod(AGENT_LOG_DIR, 0o700)
 
 # Active chat processes: {session_id: {'process': Popen, 'started': datetime}}
 active_chat_processes = {}
+active_chat_lock = threading.Lock()
 
 # Chat sessions storage: {session_id: {'messages': [], 'project': str, 'flags': []}}
 chat_sessions = {}
@@ -415,14 +416,15 @@ def cleanup_old_processes():
                 active_terminals.pop(tid, None)
 
     # Clean up chat processes
-    for sid, chat in list(active_chat_processes.items()):
-        if now - chat.get('started', now) > timeout:
-            logger.info("Killing stale chat process %s", sid)
-            try:
-                chat['process'].terminate()
-            except OSError:
-                pass
-            active_chat_processes.pop(sid, None)
+    with active_chat_lock:
+        for sid, chat in list(active_chat_processes.items()):
+            if now - chat.get('started', now) > timeout:
+                logger.info("Killing stale chat process %s", sid)
+                try:
+                    chat['process'].terminate()
+                except OSError:
+                    pass
+                active_chat_processes.pop(sid, None)
 
 
 def _reap_tmux_sessions():
@@ -520,11 +522,12 @@ def shutdown_cleanup():
                 pass
 
     # Kill all chat processes
-    for sid, chat in list(active_chat_processes.items()):
-        try:
-            chat['process'].terminate()
-        except OSError:
-            pass
+    with active_chat_lock:
+        for sid, chat in list(active_chat_processes.items()):
+            try:
+                chat['process'].terminate()
+            except OSError:
+                pass
 
     tmux_sessions = _tmux_list_sessions()
     if tmux_sessions:
@@ -2183,9 +2186,10 @@ def handle_chat_message(data):
     save_session(session_id)
 
     # Check concurrent chat limit
-    if len(active_chat_processes) >= CONFIG['max_concurrent_chats']:
-        emit('chat_error', {'session_id': session_id, 'error': 'Too many concurrent chats. Please wait.'})
-        return
+    with active_chat_lock:
+        if len(active_chat_processes) >= CONFIG['max_concurrent_chats']:
+            emit('chat_error', {'session_id': session_id, 'error': 'Too many concurrent chats. Please wait.'})
+            return
 
     emit('chat_status', {'session_id': session_id, 'status': 'running'})
 
@@ -2217,10 +2221,11 @@ def handle_chat_message(data):
             )
 
             # Track the process for watchdog
-            active_chat_processes[session_id] = {
-                'process': process,
-                'started': datetime.now()
-            }
+            with active_chat_lock:
+                active_chat_processes[session_id] = {
+                    'process': process,
+                    'started': datetime.now()
+                }
 
             response_text = []
             for line in iter(process.stdout.readline, ''):
@@ -2281,7 +2286,8 @@ def handle_chat_message(data):
             })
         finally:
             # Remove from tracking
-            active_chat_processes.pop(session_id, None)
+            with active_chat_lock:
+                active_chat_processes.pop(session_id, None)
 
     thread = threading.Thread(target=run_claude, daemon=True)
     thread.start()

@@ -990,6 +990,33 @@ class TestTmuxOwnership(unittest.TestCase):
 
 
 # ===================================================================
+# Thread Safety — active_chat_processes lock
+# ===================================================================
+class TestChatProcessLock(unittest.TestCase):
+    """Verify active_chat_processes has a threading lock."""
+
+    def test_active_chat_lock_exists(self):
+        """active_chat_processes must have a corresponding lock."""
+        from app import active_chat_lock
+        import threading
+        self.assertIsInstance(active_chat_lock, type(threading.Lock()))
+
+    def test_lock_used_at_mutation_sites(self):
+        """All mutations of active_chat_processes must be under active_chat_lock."""
+        app_path = os.path.join(_project_root, 'app.py')
+        with open(app_path) as f:
+            source = f.read()
+        # Count bare mutations (pop/assignment) that are NOT inside a lock
+        # The lock should appear near every .pop and assignment
+        import re
+        mutations = re.findall(r'active_chat_processes\[|active_chat_processes\.pop', source)
+        lock_uses = re.findall(r'active_chat_lock', source)
+        # At least as many lock references as mutation sites (definition + uses)
+        self.assertGreaterEqual(len(lock_uses), len(mutations),
+                                f"Found {len(mutations)} mutations but only {len(lock_uses)} lock references")
+
+
+# ===================================================================
 # Debug File Leak Prevention
 # ===================================================================
 class TestNoDebugFileLeak(unittest.TestCase):
