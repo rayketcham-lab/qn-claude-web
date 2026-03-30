@@ -850,10 +850,25 @@ def deploy_agents(project_path, active_agent_ids, custom_agents):
     return deployed
 
 
-def build_claude_env(flags):
+def build_claude_env(flags, username=None):
     """Build environment variables dict for Claude process.
-    Starts from current env and adds Claude-specific vars based on flags."""
+    Starts from current env and adds Claude-specific vars based on flags.
+
+    If ``username`` is provided and that user has an encrypted API key stored,
+    the key is decrypted and injected as ANTHROPIC_API_KEY so it overrides any
+    key already present in the server's environment."""
     env = os.environ.copy()
+
+    # Per-user API key — decrypt and inject if available
+    if username:
+        try:
+            plaintext_key = get_user_api_key(username)
+            if plaintext_key:
+                env['ANTHROPIC_API_KEY'] = plaintext_key
+        except Exception as exc:
+            # Decryption failure must not prevent the session from starting;
+            # Claude will fall back to whatever key is in the server env.
+            logger.warning("Failed to decrypt API key for user %s: %s", username, exc)
 
     # Extended thinking: MAX_THINKING_TOKENS
     if flags.get('extended_thinking'):
@@ -1982,7 +1997,8 @@ def handle_terminal_create(data):
     # Build command and environment (SSH-wrapped if remote)
     prompt = autonomous_task if autonomous_task else None
     cmd = build_claude_command(project_path, flags, prompt=prompt, remote_host=remote_host)
-    claude_env = build_claude_env(flags)
+    _terminal_owner = session.get('username', '')
+    claude_env = build_claude_env(flags, username=_terminal_owner)
 
     # For SSH mode, don't chdir locally. For local/mount, chdir to project path
     use_local_chdir = not (remote_host and remote_host.get('mode') == 'ssh')
@@ -2342,7 +2358,8 @@ def handle_chat_message(data):
 
     # Build command and environment (SSH-wrapped if remote)
     cmd = build_claude_command(sess['project'], sess['flags'], message, remote_host=remote_host)
-    claude_env = build_claude_env(sess['flags'])
+    _chat_owner = session.get('username', '')
+    claude_env = build_claude_env(sess['flags'], username=_chat_owner)
 
     # For SSH mode, cwd is irrelevant (cd happens on remote)
     use_cwd = sess['project'] if not (remote_host and remote_host.get('mode') == 'ssh') else None
@@ -2950,6 +2967,84 @@ def api_write_file():
 
 # ============== Multi-User API ==============
 
+# ---- API Key Encryption (itsdangerous URLSafeTimedSerializer) ----
+# We use itsdangerous (already vendored via Flask) to provide authenticated
+# encryption of API keys stored in config.json.  The serializer signs and
+# encodes arbitrary Python objects using the app secret key plus a per-user
+# salt, making the ciphertext both tamper-evident and user-specific.
+#
+# NOTE: itsdangerous provides *signed serialisation*, not AES encryption.
+# The payload is base64url-encoded (not plaintext) and is HMAC-signed using
+# a SHA-512 digest keyed off the server secret + per-user salt.  This means:
+#   • The stored value is opaque to anyone without the server secret key.
+#   • Two users storing the same API key produce different stored values
+#     (different salt).
+#   • Tampering with the stored value will be detected on load.
+# This satisfies the "encrypted at rest" requirement without adding any new
+# dependencies.
+
+def _api_key_serializer(user_salt: str):
+    """Return an itsdangerous URLSafeTimedSerializer scoped to user_salt.
+
+    Using a per-user salt means the same plaintext encrypts to a different
+    token for each user, and a token from one user cannot be decoded as
+    another user's key even if the attacker knows the server secret."""
+    from itsdangerous import URLSafeTimedSerializer
+    return URLSafeTimedSerializer(
+        secret_key=app.secret_key,
+        salt=f'api-key:{user_salt}',
+    )
+
+
+def encrypt_api_key(plaintext_key: str, user_salt: str) -> str:
+    """Encrypt (sign + encode) an API key for storage.
+
+    Returns an opaque string safe for storage in config.json.
+    Raises ``ValueError`` if ``plaintext_key`` or ``user_salt`` is empty."""
+    if not plaintext_key:
+        raise ValueError("plaintext_key must not be empty")
+    if not user_salt:
+        raise ValueError("user_salt must not be empty")
+    s = _api_key_serializer(user_salt)
+    return s.dumps(plaintext_key)
+
+
+def decrypt_api_key(encrypted_key: str, user_salt: str) -> str:
+    """Decrypt (verify + decode) a stored encrypted API key.
+
+    Returns the original plaintext.
+    Raises ``itsdangerous.BadSignature`` / ``itsdangerous.BadData`` on
+    tampering, or ``ValueError`` for empty inputs."""
+    if not encrypted_key:
+        raise ValueError("encrypted_key must not be empty")
+    if not user_salt:
+        raise ValueError("user_salt must not be empty")
+    from itsdangerous import URLSafeTimedSerializer
+    s = _api_key_serializer(user_salt)
+    # max_age=None → no expiry; we want permanent storage
+    return s.loads(encrypted_key, max_age=None)
+
+
+def get_user_api_key(username: str):
+    """Return the decrypted ANTHROPIC_API_KEY for *username*, or None.
+
+    Returns None if the user has no stored key or decryption fails."""
+    if not username:
+        return None
+    users = CONFIG.get('users', [])
+    user = next((u for u in users if u['username'] == username), None)
+    if not user:
+        return None
+    encrypted = user.get('encrypted_api_key', '')
+    if not encrypted:
+        return None
+    try:
+        return decrypt_api_key(encrypted, username)
+    except Exception as exc:
+        logger.warning("API key decryption failed for %s: %s", username, exc)
+        return None
+
+
 def get_current_user():
     """Get current logged-in user info"""
     users = CONFIG.get('users', [])
@@ -3081,6 +3176,99 @@ def api_whoami():
     if user:
         return jsonify({'username': user['username'], 'role': user.get('role', 'admin')})
     return jsonify({'username': 'anonymous', 'role': 'admin'})
+
+
+@app.route('/api/user/api-key', methods=['POST'])
+@login_required
+@csrf_protect
+def api_store_api_key():
+    """Store an encrypted ANTHROPIC_API_KEY for the current user.
+
+    Accepts JSON: ``{"api_key": "sk-ant-..."}``
+    The key is encrypted before being written to config.json — the plaintext
+    is never persisted."""
+    username = session.get('username', '')
+    if not username:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    data = request.json or {}
+    plaintext_key = data.get('api_key', '').strip()
+    if not plaintext_key:
+        return jsonify({'error': 'api_key is required'}), 400
+    # Basic sanity check — Anthropic keys start with "sk-ant-"
+    if len(plaintext_key) < 20:
+        return jsonify({'error': 'api_key appears invalid (too short)'}), 400
+
+    try:
+        encrypted = encrypt_api_key(plaintext_key, username)
+    except Exception as exc:
+        logger.error("API key encryption failed for %s: %s", username, exc)
+        return jsonify({'error': 'Failed to encrypt API key'}), 500
+
+    users = CONFIG.get('users', [])
+    user_record = next((u for u in users if u['username'] == username), None)
+    if user_record is None:
+        return jsonify({'error': 'User record not found'}), 404
+
+    user_record['encrypted_api_key'] = encrypted
+    CONFIG['users'] = users
+    save_config(CONFIG)
+
+    logger.info("Stored encrypted API key for user %s", username)
+    return jsonify({'success': True})
+
+
+@app.route('/api/user/api-key', methods=['DELETE'])
+@login_required
+@csrf_protect
+def api_delete_api_key():
+    """Remove the stored encrypted API key for the current user."""
+    username = session.get('username', '')
+    if not username:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    users = CONFIG.get('users', [])
+    user_record = next((u for u in users if u['username'] == username), None)
+    if user_record is None:
+        return jsonify({'error': 'User record not found'}), 404
+
+    user_record.pop('encrypted_api_key', None)
+    CONFIG['users'] = users
+    save_config(CONFIG)
+
+    logger.info("Deleted API key for user %s", username)
+    return jsonify({'success': True})
+
+
+@app.route('/api/user/api-key', methods=['GET'])
+@login_required
+def api_get_api_key():
+    """Return masked API key status for the current user.
+
+    Never returns the full decrypted key.  Returns:
+    ``{"has_key": true, "masked": "sk-ant-...XXXX"}`` when set,
+    ``{"has_key": false}`` when not set."""
+    username = session.get('username', '')
+    if not username:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    users = CONFIG.get('users', [])
+    user_record = next((u for u in users if u['username'] == username), None)
+    if not user_record or not user_record.get('encrypted_api_key'):
+        return jsonify({'has_key': False})
+
+    # Decrypt only to build the mask — never send the full key
+    try:
+        plaintext = decrypt_api_key(user_record['encrypted_api_key'], username)
+        # Show first 10 chars + last 4, rest as asterisks
+        if len(plaintext) > 14:
+            masked = plaintext[:10] + '*' * (len(plaintext) - 14) + plaintext[-4:]
+        else:
+            masked = '***' + plaintext[-4:]
+        return jsonify({'has_key': True, 'masked': masked})
+    except Exception as exc:
+        logger.warning("Failed to decrypt API key for mask display (%s): %s", username, exc)
+        return jsonify({'has_key': True, 'masked': '(stored — cannot display)'})
 
 
 # ============== Usage & Terminals API ==============

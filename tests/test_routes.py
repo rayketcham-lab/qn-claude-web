@@ -733,5 +733,263 @@ class TestWebSocketAuth(unittest.TestCase):
             self.assertTrue(app_module._ws_auth_check())
 
 
+# ===========================================================================
+# API Key Encryption Tests
+# ===========================================================================
+
+class TestApiKeyEncryption(unittest.TestCase):
+    """Unit tests for the encrypt_api_key / decrypt_api_key helpers."""
+
+    def setUp(self):
+        self._config_snap = _snapshot_config()
+        # Use a deterministic secret key for encryption tests
+        flask_app.config['SECRET_KEY'] = 'test-secret-key-routes'
+        app_module.app.secret_key = 'test-secret-key-routes'
+
+    def tearDown(self):
+        _restore_config(self._config_snap)
+
+    def test_encrypt_decrypt_roundtrip(self):
+        """Encrypt then decrypt returns the original plaintext."""
+        plaintext = 'sk-ant-api03-testapikey-AAAAA'
+        encrypted = app_module.encrypt_api_key(plaintext, 'alice')
+        result = app_module.decrypt_api_key(encrypted, 'alice')
+        self.assertEqual(result, plaintext)
+
+    def test_encrypted_key_not_plaintext(self):
+        """The encrypted output must not be the same as the plaintext input."""
+        plaintext = 'sk-ant-api03-testapikey-AAAAA'
+        encrypted = app_module.encrypt_api_key(plaintext, 'alice')
+        self.assertNotEqual(encrypted, plaintext)
+
+    def test_different_users_different_ciphertext(self):
+        """The same plaintext key encrypted for two users must differ."""
+        plaintext = 'sk-ant-api03-testapikey-AAAAA'
+        enc_alice = app_module.encrypt_api_key(plaintext, 'alice')
+        enc_bob = app_module.encrypt_api_key(plaintext, 'bob')
+        self.assertNotEqual(enc_alice, enc_bob)
+
+    def test_wrong_salt_fails_to_decrypt(self):
+        """A token encrypted for alice must not decrypt under bob's salt."""
+        from itsdangerous import BadSignature
+        plaintext = 'sk-ant-api03-testapikey-AAAAA'
+        enc_alice = app_module.encrypt_api_key(plaintext, 'alice')
+        with self.assertRaises(Exception):
+            app_module.decrypt_api_key(enc_alice, 'bob')
+
+    def test_empty_plaintext_raises(self):
+        """encrypt_api_key with empty plaintext raises ValueError."""
+        with self.assertRaises(ValueError):
+            app_module.encrypt_api_key('', 'alice')
+
+    def test_empty_salt_raises(self):
+        """encrypt_api_key with empty salt raises ValueError."""
+        with self.assertRaises(ValueError):
+            app_module.encrypt_api_key('sk-ant-api03-testapikey', '')
+
+    def test_get_user_api_key_returns_none_when_no_key(self):
+        """get_user_api_key returns None when the user has no stored key."""
+        app_module.CONFIG['users'] = [
+            {'username': 'alice', 'password_hash': 'x', 'role': 'user'}
+        ]
+        result = app_module.get_user_api_key('alice')
+        self.assertIsNone(result)
+
+    def test_get_user_api_key_returns_none_for_unknown_user(self):
+        """get_user_api_key returns None for a username not in CONFIG."""
+        app_module.CONFIG['users'] = []
+        result = app_module.get_user_api_key('nobody')
+        self.assertIsNone(result)
+
+    def test_get_user_api_key_decrypts_stored_key(self):
+        """get_user_api_key decrypts and returns the stored key."""
+        plaintext = 'sk-ant-api03-testapikey-AAAAA'
+        encrypted = app_module.encrypt_api_key(plaintext, 'alice')
+        app_module.CONFIG['users'] = [
+            {'username': 'alice', 'password_hash': 'x', 'role': 'user',
+             'encrypted_api_key': encrypted}
+        ]
+        result = app_module.get_user_api_key('alice')
+        self.assertEqual(result, plaintext)
+
+    def test_build_claude_env_injects_api_key(self):
+        """build_claude_env injects ANTHROPIC_API_KEY when user has a stored key."""
+        plaintext = 'sk-ant-api03-testapikey-AAAAA'
+        encrypted = app_module.encrypt_api_key(plaintext, 'alice')
+        app_module.CONFIG['users'] = [
+            {'username': 'alice', 'password_hash': 'x', 'role': 'user',
+             'encrypted_api_key': encrypted}
+        ]
+        env = app_module.build_claude_env({}, username='alice')
+        self.assertEqual(env.get('ANTHROPIC_API_KEY'), plaintext)
+
+    def test_build_claude_env_no_key_when_no_stored_key(self):
+        """build_claude_env does not override ANTHROPIC_API_KEY when user has none."""
+        import os
+        app_module.CONFIG['users'] = [
+            {'username': 'alice', 'password_hash': 'x', 'role': 'user'}
+        ]
+        # Remove the env var to test that it remains absent
+        original = os.environ.pop('ANTHROPIC_API_KEY', None)
+        try:
+            env = app_module.build_claude_env({}, username='alice')
+            self.assertNotIn('ANTHROPIC_API_KEY', env)
+        finally:
+            if original is not None:
+                os.environ['ANTHROPIC_API_KEY'] = original
+
+
+class TestApiKeyRoutes(unittest.TestCase):
+    """Integration tests for POST/GET/DELETE /api/user/api-key."""
+
+    def setUp(self):
+        self._config_snap = _snapshot_config()
+        _reset_rate_limits()
+        app_module.app.secret_key = 'test-secret-key-routes'
+        _enable_auth()
+
+    def tearDown(self):
+        _restore_config(self._config_snap)
+        _reset_rate_limits()
+
+    def test_api_key_store_requires_auth(self):
+        """POST /api/user/api-key returns 401 when not logged in."""
+        with flask_app.test_client() as client:
+            resp = client.post(
+                '/api/user/api-key',
+                data=json.dumps({'api_key': 'sk-ant-api03-testapikey-AAAAA'}),
+                content_type='application/json',
+            )
+        self.assertEqual(resp.status_code, 401)
+
+    def test_api_key_get_requires_auth(self):
+        """GET /api/user/api-key returns 401 when not logged in."""
+        with flask_app.test_client() as client:
+            resp = client.get('/api/user/api-key')
+        self.assertEqual(resp.status_code, 401)
+
+    def test_api_key_store_requires_csrf(self):
+        """POST /api/user/api-key returns 403 without a CSRF token."""
+        with flask_app.test_client() as client:
+            _login(client)
+            # Do NOT include CSRF header
+            resp = client.post(
+                '/api/user/api-key',
+                data=json.dumps({'api_key': 'sk-ant-api03-testapikey-AAAAA'}),
+                content_type='application/json',
+            )
+        self.assertEqual(resp.status_code, 403)
+
+    def test_api_key_store_and_retrieve_masked(self):
+        """Store a key, then GET returns masked representation (not plaintext)."""
+        plaintext = 'sk-ant-api03-testapikey-AAAAA'
+        with flask_app.test_client() as client:
+            _login(client)
+            headers = _csrf_headers(client)
+
+            # Store the key
+            resp = client.post(
+                '/api/user/api-key',
+                data=json.dumps({'api_key': plaintext}),
+                content_type='application/json',
+                headers=headers,
+            )
+            self.assertEqual(resp.status_code, 200)
+            self.assertTrue(resp.get_json().get('success'))
+
+            # Retrieve — must not return plaintext
+            resp = client.get('/api/user/api-key')
+            data = resp.get_json()
+            self.assertEqual(resp.status_code, 200)
+            self.assertTrue(data.get('has_key'))
+            masked = data.get('masked', '')
+            self.assertNotEqual(masked, plaintext, "Masked value must not equal plaintext")
+            self.assertIn('*', masked, "Masked value must contain asterisks")
+            # Last 4 chars should match
+            self.assertEqual(masked[-4:], plaintext[-4:])
+
+    def test_api_key_get_returns_has_key_false_when_none(self):
+        """GET /api/user/api-key returns has_key=false when no key is stored."""
+        with flask_app.test_client() as client:
+            _login(client)
+            resp = client.get('/api/user/api-key')
+            data = resp.get_json()
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(data.get('has_key'))
+
+    def test_api_key_store_rejects_empty_key(self):
+        """POST /api/user/api-key with empty api_key returns 400."""
+        with flask_app.test_client() as client:
+            _login(client)
+            headers = _csrf_headers(client)
+            resp = client.post(
+                '/api/user/api-key',
+                data=json.dumps({'api_key': ''}),
+                content_type='application/json',
+                headers=headers,
+            )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_api_key_store_rejects_too_short_key(self):
+        """POST /api/user/api-key with a key shorter than 20 chars returns 400."""
+        with flask_app.test_client() as client:
+            _login(client)
+            headers = _csrf_headers(client)
+            resp = client.post(
+                '/api/user/api-key',
+                data=json.dumps({'api_key': 'tooshort'}),
+                content_type='application/json',
+                headers=headers,
+            )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_api_key_delete(self):
+        """DELETE /api/user/api-key removes the stored key."""
+        plaintext = 'sk-ant-api03-testapikey-AAAAA'
+        with flask_app.test_client() as client:
+            _login(client)
+            headers = _csrf_headers(client)
+
+            # Store first
+            client.post(
+                '/api/user/api-key',
+                data=json.dumps({'api_key': plaintext}),
+                content_type='application/json',
+                headers=headers,
+            )
+
+            # Confirm stored
+            resp = client.get('/api/user/api-key')
+            self.assertTrue(resp.get_json().get('has_key'))
+
+            # Delete
+            resp = client.delete('/api/user/api-key', headers=headers)
+            self.assertEqual(resp.status_code, 200)
+            self.assertTrue(resp.get_json().get('success'))
+
+            # Confirm gone
+            resp = client.get('/api/user/api-key')
+            self.assertFalse(resp.get_json().get('has_key'))
+
+    def test_stored_key_is_not_plaintext_in_config(self):
+        """After storing, config.json users list must not contain plaintext key."""
+        plaintext = 'sk-ant-api03-testapikey-AAAAA'
+        with flask_app.test_client() as client:
+            _login(client)
+            headers = _csrf_headers(client)
+            client.post(
+                '/api/user/api-key',
+                data=json.dumps({'api_key': plaintext}),
+                content_type='application/json',
+                headers=headers,
+            )
+
+        users = app_module.CONFIG.get('users', [])
+        user = next(u for u in users if u['username'] == 'testadmin')
+        stored = user.get('encrypted_api_key', '')
+        self.assertNotEqual(stored, plaintext, "Plaintext must not be stored in config")
+        self.assertTrue(len(stored) > 0, "encrypted_api_key must be set")
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
