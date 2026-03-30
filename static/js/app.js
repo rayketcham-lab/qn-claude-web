@@ -124,6 +124,9 @@ class ClaudeCodeWeb {
             autoRestart: document.getElementById('flag-auto-restart'),
         };
 
+        // CSRF token (fetched after auth check, refreshed on 403)
+        this.csrfToken = null;
+
         // Stable browser ID for reconnection correlation
         this._browserId = sessionStorage.getItem('qn_browser_id');
         if (!this._browserId) {
@@ -158,6 +161,9 @@ class ClaudeCodeWeb {
             console.error('Auth check failed:', e);
         }
 
+        // Fetch CSRF token before any state-mutating requests
+        await this.fetchCsrfToken();
+
         this.connectSocket();
         this.setupEventListeners();
         this.setupKeyboardShortcuts();
@@ -179,6 +185,53 @@ class ClaudeCodeWeb {
             this.elements.soundToggle.checked = this._soundEnabled;
         }
 
+    }
+
+    /**
+     * Fetch a fresh CSRF token from the server and store it.
+     * Called once on init and again after a 403 CSRF rejection before retrying.
+     */
+    async fetchCsrfToken() {
+        try {
+            const resp = await fetch('/api/csrf-token');
+            const data = await resp.json();
+            this.csrfToken = data.csrf_token || null;
+        } catch (e) {
+            console.error('Failed to fetch CSRF token:', e);
+        }
+    }
+
+    /**
+     * Returns the stored CSRF token.
+     * @returns {string|null}
+     */
+    getCsrfToken() {
+        return this.csrfToken;
+    }
+
+    /**
+     * Perform a fetch with the CSRF token header injected automatically.
+     * On a 403 response the token is refreshed and the request is retried once.
+     *
+     * @param {string} url
+     * @param {RequestInit} options
+     * @returns {Promise<Response>}
+     */
+    async csrfFetch(url, options = {}) {
+        const buildHeaders = (token) => ({
+            ...options.headers,
+            ...(token ? { 'X-CSRF-Token': token } : {}),
+        });
+
+        let response = await fetch(url, { ...options, headers: buildHeaders(this.csrfToken) });
+
+        if (response.status === 403) {
+            // Token may be stale — refresh and retry once
+            await this.fetchCsrfToken();
+            response = await fetch(url, { ...options, headers: buildHeaders(this.csrfToken) });
+        }
+
+        return response;
     }
 
     async checkServerStatus() {
@@ -298,7 +351,7 @@ class ClaudeCodeWeb {
         };
 
         try {
-            const response = await fetch('/api/config', {
+            const response = await this.csrfFetch('/api/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
@@ -332,7 +385,7 @@ class ClaudeCodeWeb {
         }
 
         try {
-            const res = await fetch('/api/auth/setup', {
+            const res = await this.csrfFetch('/api/auth/setup', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password })
@@ -359,7 +412,7 @@ class ClaudeCodeWeb {
         };
 
         try {
-            const response = await fetch('/api/config', {
+            const response = await this.csrfFetch('/api/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
@@ -448,7 +501,7 @@ class ClaudeCodeWeb {
         favorites.push({ name, path, remote_host_id: remoteHostId });
 
         try {
-            const response = await fetch('/api/config', {
+            const response = await this.csrfFetch('/api/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ favorites })
@@ -475,7 +528,7 @@ class ClaudeCodeWeb {
         favorites.splice(index, 1);
 
         try {
-            await fetch('/api/config', {
+            await this.csrfFetch('/api/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ favorites })
@@ -559,7 +612,7 @@ class ClaudeCodeWeb {
         remoteHosts.splice(index, 1);
 
         try {
-            await fetch('/api/config', {
+            await this.csrfFetch('/api/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ remote_hosts: remoteHosts })
@@ -2664,7 +2717,7 @@ class ClaudeCodeWeb {
         }
 
         try {
-            const response = await fetch('/api/files/write', {
+            const response = await this.csrfFetch('/api/files/write', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ path, content })
@@ -2899,7 +2952,7 @@ class ClaudeCodeWeb {
         }
 
         try {
-            const response = await fetch('/api/users', {
+            const response = await this.csrfFetch('/api/users', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password, role })
@@ -2924,7 +2977,7 @@ class ClaudeCodeWeb {
         if (!ok) return;
 
         try {
-            const response = await fetch(`/api/users/${username}`, { method: 'DELETE' });
+            const response = await this.csrfFetch(`/api/users/${username}`, { method: 'DELETE' });
             const data = await response.json();
             if (data.success) {
                 this.showToast(`User "${username}" deleted`, 'success');
@@ -2960,7 +3013,7 @@ class ClaudeCodeWeb {
 
         // Fetch the server's own CLAUDE.md as the template
         try {
-            const res = await fetch('/api/project/deploy-claude-md', {
+            const res = await this.csrfFetch('/api/project/deploy-claude-md', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ path: projectPath }),
@@ -3273,7 +3326,7 @@ class ClaudeCodeWeb {
         }
 
         try {
-            const res = await fetch('/api/project/init', {
+            const res = await this.csrfFetch('/api/project/init', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
@@ -3538,7 +3591,7 @@ class ClaudeCodeWeb {
             let setupRes = this._rwSshSetup;
             if (!setupRes?.has_key) {
                 update('key', 'active', 'Generating SSH key (ed25519)...');
-                const res = await fetch('/api/remote/ssh-setup', {
+                const res = await this.csrfFetch('/api/remote/ssh-setup', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({}),
@@ -3562,7 +3615,7 @@ class ClaudeCodeWeb {
         // Step 2: Test if key already authorized
         update('test', 'active', 'Testing key authentication...');
         try {
-            const testRes = await fetch('/api/remote/test', {
+            const testRes = await this.csrfFetch('/api/remote/test', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -3598,7 +3651,7 @@ class ClaudeCodeWeb {
 
         update('push', 'active', 'Pushing SSH key to remote...');
         try {
-            const pushRes = await fetch('/api/remote/push-key', {
+            const pushRes = await this.csrfFetch('/api/remote/push-key', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -3637,7 +3690,7 @@ class ClaudeCodeWeb {
         const nextBtn = document.getElementById('rw-next');
 
         try {
-            const res = await fetch('/api/remote/test', {
+            const res = await this.csrfFetch('/api/remote/test', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -3699,7 +3752,7 @@ class ClaudeCodeWeb {
         const port = parseInt(document.getElementById('rw-port').value) || 22;
 
         try {
-            const res = await fetch('/api/remote/test', {
+            const res = await this.csrfFetch('/api/remote/test', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -3793,7 +3846,7 @@ class ClaudeCodeWeb {
         const remoteHosts = [...(this.config.remote_hosts || []), host];
 
         try {
-            const res = await fetch('/api/config', {
+            const res = await this.csrfFetch('/api/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ remote_hosts: remoteHosts }),
@@ -4134,7 +4187,7 @@ class ClaudeCodeWeb {
         };
 
         try {
-            const response = await fetch('/api/config', {
+            const response = await this.csrfFetch('/api/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)

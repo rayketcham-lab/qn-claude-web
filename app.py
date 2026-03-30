@@ -67,6 +67,44 @@ logging.basicConfig(
 )
 logger = logging.getLogger('qnca')
 
+# ============== Audit Logging ==============
+
+AUDIT_LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'audit.log')
+_audit_lock = threading.Lock()
+
+# Dedicated file handler for the audit log — JSON lines, no rotation.
+# A separate handler (not the root logger) guarantees that audit entries
+# are written to audit.log even if the main log level changes at runtime.
+_audit_logger = logging.getLogger('qnca.audit')
+_audit_logger.propagate = False
+_audit_logger.setLevel(logging.INFO)
+_audit_handler = logging.FileHandler(AUDIT_LOG_PATH, encoding='utf-8')
+_audit_handler.setFormatter(logging.Formatter('%(message)s'))
+_audit_logger.addHandler(_audit_handler)
+
+
+def audit_log(event: str, user: str, ip: str = '', result: str = 'ok', detail: dict = None) -> None:
+    """Append a single JSON-lines entry to audit.log.
+
+    Args:
+        event:  Event type string, e.g. 'auth_login', 'config_change'.
+        user:   Username performing the action ('' if unauthenticated).
+        ip:     Client IP address ('' when not applicable, e.g. WebSocket events).
+        result: Outcome string — typically 'success', 'failure', or 'ok'.
+        detail: Optional dict of extra event-specific fields.
+    """
+    entry = {
+        'ts': datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'event': event,
+        'user': user,
+        'ip': ip,
+        'result': result,
+        'detail': detail if detail is not None else {},
+    }
+    with _audit_lock:
+        _audit_logger.info(json.dumps(entry, separators=(',', ':')))
+
+
 # Version info
 VERSION = "1.6.0"
 START_TIME = datetime.now()
@@ -116,6 +154,89 @@ def check_rate_limit(endpoint, ip, max_attempts, window_seconds):
 
         _rate_limit_store[key].append((now, ip))
         return True
+
+
+# ============== Account Lockout ==============
+# Escalating lockout: 10 failures/5min → 15min; 20 failures/1hr → 1hr; 30/24hr → permanent
+# {ip: {'attempts': [timestamp, ...], 'locked_until': datetime|None, 'permanently_locked': bool}}
+_lockout_store: dict = {}
+_lockout_lock = threading.Lock()
+
+# Lockout thresholds: (failure_count, window_seconds, lockout_seconds, permanent)
+_LOCKOUT_TIERS = [
+    (10, 5 * 60,      15 * 60,     False),   # 10 in 5 min  → 15 min lockout
+    (20, 60 * 60,     60 * 60,     False),   # 20 in 1 hr   → 1 hr lockout
+    (30, 24 * 60 * 60, 0,          True),    # 30 in 24 hr  → permanent (admin reset)
+]
+
+
+def check_lockout(ip: str):
+    """Check whether *ip* is currently locked out.
+
+    Returns (allowed: bool, retry_after_seconds: int).
+    ``retry_after_seconds`` is 0 when allowed or permanently locked (no ETA).
+    """
+    now = datetime.utcnow()
+    with _lockout_lock:
+        state = _lockout_store.get(ip)
+        if state is None:
+            return True, 0
+
+        if state.get('permanently_locked'):
+            return False, 0
+
+        locked_until = state.get('locked_until')
+        if locked_until and now < locked_until:
+            retry_after = int((locked_until - now).total_seconds()) + 1
+            return False, retry_after
+
+    return True, 0
+
+
+def record_failed_login(ip: str):
+    """Record a failed login attempt for *ip* and apply lockout tiers if thresholds are crossed."""
+    now = datetime.utcnow()
+    now_ts = now.timestamp()
+
+    with _lockout_lock:
+        if ip not in _lockout_store:
+            _lockout_store[ip] = {'attempts': [], 'locked_until': None, 'permanently_locked': False}
+
+        state = _lockout_store[ip]
+
+        # Skip recording if already permanently locked (no need to keep growing the list)
+        if state.get('permanently_locked'):
+            return
+
+        state['attempts'].append(now_ts)
+
+        # Prune attempts older than 24 hours (the widest window)
+        cutoff = now_ts - 24 * 60 * 60
+        state['attempts'] = [ts for ts in state['attempts'] if ts >= cutoff]
+
+        # Evaluate tiers from most severe to least — apply the worst that matches
+        for failure_count, window_seconds, lockout_seconds, permanent in reversed(_LOCKOUT_TIERS):
+            window_cutoff = now_ts - window_seconds
+            recent = sum(1 for ts in state['attempts'] if ts >= window_cutoff)
+            if recent >= failure_count:
+                if permanent:
+                    state['permanently_locked'] = True
+                    state['locked_until'] = None
+                    logger.warning("Account permanently locked for IP %s after %d failures", ip, recent)
+                else:
+                    state['locked_until'] = now + timedelta(seconds=lockout_seconds)
+                    logger.warning(
+                        "IP %s locked out for %ds after %d failures in %ds window",
+                        ip, lockout_seconds, recent, window_seconds,
+                    )
+                return  # Apply only the most severe tier that triggered
+
+
+def clear_lockout(ip: str):
+    """Remove all lockout state for *ip* (admin reset)."""
+    with _lockout_lock:
+        _lockout_store.pop(ip, None)
+
 
 # Configuration
 CONFIG_FILE = Path(__file__).parent / 'config.json'
@@ -1099,6 +1220,22 @@ def login():
                 return jsonify({'success': False, 'error': 'Too many login attempts. Try again later.'}), 429
             return render_template('login.html', error='Too many login attempts. Try again later.'), 429
 
+        # Account lockout check (escalating backoff)
+        allowed, retry_after = check_lockout(client_ip)
+        if not allowed:
+            if retry_after:
+                msg = f'Account locked. Try again in {retry_after} seconds.'
+                resp_headers = {'Retry-After': str(retry_after)}
+            else:
+                msg = 'Account locked. Contact an administrator to unlock.'
+                resp_headers = {}
+            if request.is_json:
+                resp = jsonify({'success': False, 'error': msg})
+                for k, v in resp_headers.items():
+                    resp.headers[k] = v
+                return resp, 429
+            return render_template('login.html', error=msg), 429
+
         data = request.json if request.is_json else request.form
         username = data.get('username', '')
         password = data.get('password', '')
@@ -1123,14 +1260,20 @@ def login():
                 user_role = 'admin'
 
         if authenticated:
+            # Clear any lockout state on successful login
+            clear_lockout(client_ip)
             session['authenticated'] = True
             session['username'] = username
             session['role'] = user_role
             session['user_id'] = str(uuid.uuid4())
             session['login_time'] = datetime.utcnow().isoformat()
+            audit_log('auth_login', username, ip=client_ip, result='success')
             if request.is_json:
                 return jsonify({'success': True})
             return redirect('/')
+        # Record failed attempt for lockout tracking
+        record_failed_login(client_ip)
+        audit_log('auth_login', username, ip=client_ip, result='failure')
         if request.is_json:
             return jsonify({'success': False, 'error': 'Invalid credentials'}), 401
         return render_template('login.html', error='Invalid username or password')
@@ -1155,6 +1298,8 @@ def api_health():
 @app.route('/logout')
 def logout():
     """Logout"""
+    username = session.get('username', '')
+    audit_log('auth_logout', username, ip=request.remote_addr or '')
     session.clear()
     return redirect('/login')
 
@@ -1220,6 +1365,7 @@ def auth_setup():
     session['user_id'] = str(uuid.uuid4())
     session['login_time'] = datetime.utcnow().isoformat()
 
+    audit_log('auth_setup', username, ip=client_ip, result='success')
     return jsonify({'success': True})
 
 
@@ -1344,10 +1490,13 @@ def api_update_config():
         if not os.path.isdir(new_root):
             return jsonify({'success': False, 'error': f'Invalid directory: {data["projects_root"]}'}), 400
         data['projects_root'] = new_root
-    for key in allowed_keys:
-        if key in data:
-            CONFIG[key] = data[key]
+    changed_keys = [key for key in allowed_keys if key in data]
+    for key in changed_keys:
+        CONFIG[key] = data[key]
     save_config(CONFIG)
+    username = session.get('username', '')
+    audit_log('config_change', username, ip=request.remote_addr or '',
+              detail={'keys': changed_keys})
     return jsonify({'success': True})
 
 
@@ -3554,6 +3703,50 @@ def api_whoami():
     if user:
         return jsonify({'username': user['username'], 'role': user.get('role', 'admin')})
     return jsonify({'username': 'anonymous', 'role': 'admin'})
+
+
+# ---- Account Lockout Admin Endpoints ----
+
+@app.route('/api/admin/lockouts')
+@login_required
+@admin_required
+def api_list_lockouts():
+    """List all currently locked-out IPs (admin only).
+
+    Returns a list of objects with ``ip``, ``permanently_locked``, and
+    ``locked_until`` (ISO-8601 UTC string, or null for permanent locks).
+    """
+    now = datetime.utcnow()
+    result = []
+    with _lockout_lock:
+        for ip, state in list(_lockout_store.items()):
+            if state.get('permanently_locked'):
+                result.append({'ip': ip, 'permanently_locked': True, 'locked_until': None})
+            elif state.get('locked_until') and now < state['locked_until']:
+                result.append({
+                    'ip': ip,
+                    'permanently_locked': False,
+                    'locked_until': state['locked_until'].isoformat() + 'Z',
+                })
+    return jsonify({'lockouts': result})
+
+
+@app.route('/api/admin/unlock-ip', methods=['POST'])
+@login_required
+@admin_required
+@csrf_protect
+def api_unlock_ip():
+    """Clear lockout state for a given IP (admin only).
+
+    Accepts JSON: ``{"ip": "1.2.3.4"}``
+    """
+    data = request.json or {}
+    ip = data.get('ip', '').strip()
+    if not ip:
+        return jsonify({'error': 'ip is required'}), 400
+    clear_lockout(ip)
+    logger.info("Lockout cleared for IP %s by admin %s", ip, session.get('username', 'unknown'))
+    return jsonify({'success': True, 'ip': ip})
 
 
 @app.route('/api/user/api-key', methods=['POST'])

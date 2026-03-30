@@ -1182,11 +1182,14 @@ class TestConfigThreadSafety(unittest.TestCase):
         app_path = os.path.join(_project_root, 'app.py')
         with open(app_path) as f:
             source = f.read()
-        # The validation check should come before the loop that sets CONFIG[key]
+        # The validation check should come before CONFIG mutation
         validate_pos = source.find("if not os.path.isdir(new_root)")
-        apply_pos = source.find("for key in allowed_keys:")
-        self.assertGreater(apply_pos, 0)
-        self.assertGreater(validate_pos, 0)
+        # Look for the CONFIG[key] assignment pattern
+        apply_pos = source.find("CONFIG[key] = data[key]")
+        if apply_pos < 0:
+            apply_pos = source.find("for key in allowed_keys:")
+        self.assertGreater(apply_pos, 0, "CONFIG mutation loop not found")
+        self.assertGreater(validate_pos, 0, "projects_root validation not found")
         self.assertLess(validate_pos, apply_pos,
                          "projects_root validation must happen before CONFIG mutation loop")
 

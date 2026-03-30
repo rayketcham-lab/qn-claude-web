@@ -25,12 +25,117 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
+
+# -------------------------------------------------------------------
+# OS / platform detection
+# -------------------------------------------------------------------
+
+# Sets the global DETECTED_PLATFORM variable.  Possible values:
+#   linux-debian  linux-rhel  linux-arch  macos  wsl  linux-unknown
+detect_platform() {
+    if [[ -f /proc/version ]] && grep -qi "microsoft" /proc/version 2>/dev/null; then
+        DETECTED_PLATFORM="wsl"
+        return
+    fi
+
+    case "$(uname -s)" in
+        Darwin)
+            DETECTED_PLATFORM="macos"
+            return
+            ;;
+        Linux)
+            if [[ -f /etc/os-release ]]; then
+                # shellcheck source=/dev/null
+                source /etc/os-release
+                case "${ID:-}" in
+                    ubuntu|debian|linuxmint|pop|kali)
+                        DETECTED_PLATFORM="linux-debian"
+                        return
+                        ;;
+                    rhel|centos|fedora|rocky|almalinux|amzn)
+                        DETECTED_PLATFORM="linux-rhel"
+                        return
+                        ;;
+                    arch|manjaro|endeavouros)
+                        DETECTED_PLATFORM="linux-arch"
+                        return
+                        ;;
+                esac
+            fi
+            DETECTED_PLATFORM="linux-unknown"
+            return
+            ;;
+        *)
+            DETECTED_PLATFORM="linux-unknown"
+            ;;
+    esac
+}
+
+# Print a human-readable platform summary and relevant install hints.
+show_platform_info() {
+    detect_platform
+    echo ""
+    echo -e "${BOLD}========================================${NC}"
+    echo -e "${BOLD}  Platform Detection${NC}"
+    echo -e "${BOLD}========================================${NC}"
+    echo ""
+    echo -e "  Detected:  ${CYAN}${DETECTED_PLATFORM}${NC}"
+    echo ""
+    case "${DETECTED_PLATFORM}" in
+        linux-debian)
+            echo -e "  OS family: Debian / Ubuntu"
+            echo -e "  Python:    ${CYAN}sudo apt install python3${NC}"
+            echo -e "  tmux:      ${CYAN}sudo apt install tmux${NC}"
+            echo -e "  Service:   systemd (install as root to register)"
+            ;;
+        linux-rhel)
+            echo -e "  OS family: RHEL / CentOS / Fedora"
+            echo -e "  Python:    ${CYAN}sudo dnf install python3${NC}"
+            echo -e "  tmux:      ${CYAN}sudo dnf install tmux${NC}"
+            echo -e "  Service:   systemd (install as root to register)"
+            ;;
+        linux-arch)
+            echo -e "  OS family: Arch Linux"
+            echo -e "  Python:    ${CYAN}sudo pacman -S python${NC}"
+            echo -e "  tmux:      ${CYAN}sudo pacman -S tmux${NC}"
+            echo -e "  Service:   systemd (install as root to register)"
+            ;;
+        macos)
+            echo -e "  OS family: macOS"
+            if command -v brew &> /dev/null; then
+                echo -e "  Homebrew:  found ($(brew --version 2>/dev/null | head -1))"
+            else
+                echo -e "  Homebrew:  ${YELLOW}not found — install from https://brew.sh${NC}"
+            fi
+            echo -e "  Python:    ${CYAN}brew install python@3.12${NC}"
+            echo -e "  tmux:      ${CYAN}brew install tmux${NC}"
+            echo -e "  Service:   systemd is ${RED}not available${NC} on macOS"
+            echo -e "             Use launchd or start manually: ${CYAN}./start.sh${NC}"
+            ;;
+        wsl)
+            echo -e "  OS family: Windows Subsystem for Linux"
+            echo -e "  Python:    ${CYAN}sudo apt install python3${NC}"
+            echo -e "  tmux:      ${CYAN}sudo apt install tmux${NC}"
+            echo -e "  Service:   systemd availability depends on WSL version"
+            echo -e "             WSL2 with systemd enabled: ${CYAN}sudo systemctl enable qn-code-assistant${NC}"
+            echo -e "             Otherwise start manually:  ${CYAN}./start.sh${NC}"
+            ;;
+        *)
+            echo -e "  OS family: Unknown Linux"
+            echo -e "  Python:    install python3.10+ via your package manager"
+            echo -e "  tmux:      install tmux via your package manager"
+            echo -e "  Service:   check if systemd is available: ${CYAN}pidof systemd${NC}"
+            ;;
+    esac
+    echo ""
+}
+
 VERSION="1.6.0"
 
 # SHA-256 hashes baked at build time
 declare -A FILE_HASHES=(
-    ["app.py"]="c68ec77054cbb6867a1d699e8bacf6d50ca9e990cd33cc1cfb93cee628c63b26"
-    ["static/js/app.js"]="c8f52ef26b18d0ebab2fe954596ad09c05fb7227ad84112a56ec148d7f3e7700"
+    ["app.py"]="996a97d32f4b69a9513339f2d5cf2d9bdfa7f49c59772c99194988ce8a9a98b5"
+    ["static/js/app.js"]="64f2de56f56d9a24b80e17f6903ad6231440acad66b26b23c2bcd6386c61df15"
     ["static/css/style.css"]="663824a53464c4e8b33433f6b0cc87eb78e4f3d80741acc2d4f64c5289137d1f"
     ["templates/index.html"]="fb2e35f4623c9a3e58b4fe5287895fb47aa7b416df53322951e1e4714060f9a6"
     ["templates/login.html"]="d382dc550d57798de777d0ad43a1496593985d85fc74f7b378ee24518d2083f2"
@@ -50,6 +155,7 @@ ACE_HASH="13b2cedadef1e3fdadc06bdfdb2be31f26cc89f61a9017ab7c967ca17f54ec73"
 ACE_FILE_COUNT="30"
 
 NONINTERACTIVE=0
+DETECTED_PLATFORM=""
 
 # -------------------------------------------------------------------
 # Utility functions
@@ -206,6 +312,11 @@ verify_integrity() {
 
 check_prerequisites() {
     log_step "Checking prerequisites..."
+
+    # Detect platform once so subsequent steps can branch on it
+    detect_platform
+    log_info "Platform: ${DETECTED_PLATFORM}"
+
     local missing=0
 
     # Python 3.10+
@@ -217,12 +328,24 @@ check_prerequisites() {
         py_minor="$(echo "${py_version}" | cut -d. -f2)"
         if [[ "${py_major}" -lt 3 ]] || { [[ "${py_major}" -eq 3 ]] && [[ "${py_minor}" -lt 10 ]]; }; then
             log_error "Python 3.10+ required, found ${py_version}"
+            case "${DETECTED_PLATFORM}" in
+                macos)        log_warn "Install with: brew install python@3.12" ;;
+                linux-debian|wsl) log_warn "Install with: sudo apt install python3.12" ;;
+                linux-rhel)   log_warn "Install with: sudo dnf install python3.12" ;;
+                linux-arch)   log_warn "Install with: sudo pacman -S python" ;;
+            esac
             missing=1
         else
             log_info "Python ${py_version} found"
         fi
     else
         log_error "Python 3 is not installed"
+        case "${DETECTED_PLATFORM}" in
+            macos)        log_warn "Install with: brew install python@3.12" ;;
+            linux-debian|wsl) log_warn "Install with: sudo apt install python3" ;;
+            linux-rhel)   log_warn "Install with: sudo dnf install python3" ;;
+            linux-arch)   log_warn "Install with: sudo pacman -S python" ;;
+        esac
         missing=1
     fi
 
@@ -231,7 +354,13 @@ check_prerequisites() {
         log_info "tmux found"
     else
         log_warn "tmux is not installed — persistent terminal sessions will not work"
-        log_warn "Install with: sudo apt install tmux (Debian/Ubuntu) or sudo yum install tmux (RHEL)"
+        case "${DETECTED_PLATFORM}" in
+            macos)        log_warn "Install with: brew install tmux" ;;
+            linux-debian|wsl) log_warn "Install with: sudo apt install tmux" ;;
+            linux-rhel)   log_warn "Install with: sudo dnf install tmux" ;;
+            linux-arch)   log_warn "Install with: sudo pacman -S tmux" ;;
+            *)            log_warn "Install tmux via your system package manager" ;;
+        esac
     fi
 
     if [[ "${missing}" -eq 1 ]]; then
@@ -517,24 +646,54 @@ do_install() {
     log_info "File permissions set"
     echo ""
 
-    # Systemd service (optional)
-    if [[ -d "/etc/systemd/system" ]]; then
-        if [[ "$(id -u)" -eq 0 ]]; then
-            cp "${INSTALL_DIR}/qn-code-assistant.service" /etc/systemd/system/qn-code-assistant.service
-            systemctl daemon-reload
-            systemctl enable qn-code-assistant
-            log_info "Systemd service installed and enabled"
-            log_info "Start with: sudo systemctl start qn-code-assistant"
-        else
-            log_warn "Not running as root. To install the systemd service, run:"
-            echo "         sudo cp ${INSTALL_DIR}/qn-code-assistant.service /etc/systemd/system/"
-            echo "         sudo systemctl daemon-reload"
-            echo "         sudo systemctl enable qn-code-assistant"
-            echo "         sudo systemctl start qn-code-assistant"
-        fi
-    else
-        log_warn "systemd not detected. Manual service setup required."
-    fi
+    # Service registration — platform-aware
+    case "${DETECTED_PLATFORM}" in
+        macos)
+            log_warn "macOS detected — systemd is not available."
+            log_warn "To run at login, create a launchd plist in ~/Library/LaunchAgents/"
+            log_warn "Or start manually: cd ${INSTALL_DIR} && ./start.sh"
+            ;;
+        wsl)
+            # WSL2 with systemd enabled behaves like Linux; WSL1 does not have systemd
+            if [[ -d "/etc/systemd/system" ]] && pidof systemd &>/dev/null 2>&1; then
+                if [[ "$(id -u)" -eq 0 ]]; then
+                    cp "${INSTALL_DIR}/qn-code-assistant.service" /etc/systemd/system/qn-code-assistant.service
+                    systemctl daemon-reload
+                    systemctl enable qn-code-assistant
+                    log_info "Systemd service installed and enabled"
+                    log_info "Start with: sudo systemctl start qn-code-assistant"
+                else
+                    log_warn "Not running as root. To install the systemd service, run:"
+                    echo "         sudo cp ${INSTALL_DIR}/qn-code-assistant.service /etc/systemd/system/"
+                    echo "         sudo systemctl daemon-reload"
+                    echo "         sudo systemctl enable qn-code-assistant"
+                    echo "         sudo systemctl start qn-code-assistant"
+                fi
+            else
+                log_warn "WSL without systemd — start manually: cd ${INSTALL_DIR} && ./start.sh"
+            fi
+            ;;
+        *)
+            # Standard Linux path
+            if [[ -d "/etc/systemd/system" ]]; then
+                if [[ "$(id -u)" -eq 0 ]]; then
+                    cp "${INSTALL_DIR}/qn-code-assistant.service" /etc/systemd/system/qn-code-assistant.service
+                    systemctl daemon-reload
+                    systemctl enable qn-code-assistant
+                    log_info "Systemd service installed and enabled"
+                    log_info "Start with: sudo systemctl start qn-code-assistant"
+                else
+                    log_warn "Not running as root. To install the systemd service, run:"
+                    echo "         sudo cp ${INSTALL_DIR}/qn-code-assistant.service /etc/systemd/system/"
+                    echo "         sudo systemctl daemon-reload"
+                    echo "         sudo systemctl enable qn-code-assistant"
+                    echo "         sudo systemctl start qn-code-assistant"
+                fi
+            else
+                log_warn "systemd not detected. Manual service setup required."
+            fi
+            ;;
+    esac
 
     echo ""
 
@@ -632,6 +791,9 @@ main() {
         --uninstall)
             do_uninstall
             ;;
+        --platform)
+            show_platform_info
+            ;;
         --help|-h)
             echo "QN Code Assistant - Secure Self-Verifying Installer v${VERSION}"
             echo ""
@@ -640,6 +802,7 @@ main() {
             echo "  ./install.sh -y             Install with defaults (non-interactive)"
             echo "  ./install.sh --verify-only  Only verify file integrity"
             echo "  ./install.sh --uninstall    Remove service and cleanup"
+            echo "  ./install.sh --platform     Show detected OS platform and install hints"
             echo "  ./install.sh --help         Show this help"
             echo ""
             echo "Self-contained: only requires Python 3.10+ (no pip, no venv, no internet)"

@@ -1635,5 +1635,315 @@ class TestOnboarding(unittest.TestCase):
         self.assertEqual(resp.status_code, 403)
 
 
+# ===========================================================================
+# Account Lockout Tests
+# ===========================================================================
+
+def _reset_lockouts():
+    """Clear the in-memory lockout store between tests."""
+    with app_module._lockout_lock:
+        app_module._lockout_store.clear()
+
+
+def _do_failed_logins(client, ip, count):
+    """Helper — fire *count* bad-password POST requests from *ip*."""
+    for _ in range(count):
+        client.post(
+            '/login',
+            data=json.dumps({'username': 'testadmin', 'password': 'WRONG'}),
+            content_type='application/json',
+            environ_base={'REMOTE_ADDR': ip},
+        )
+
+
+class TestAccountLockout(unittest.TestCase):
+    """Unit tests for the lockout store functions (no HTTP)."""
+
+    def setUp(self):
+        _reset_lockouts()
+        _reset_rate_limits()
+
+    def tearDown(self):
+        _reset_lockouts()
+        _reset_rate_limits()
+
+    # -- check_lockout / record_failed_login ----------------------------------
+
+    def test_no_lockout_under_threshold(self):
+        """9 failures should not trigger any lockout."""
+        ip = '10.1.0.1'
+        for _ in range(9):
+            app_module.record_failed_login(ip)
+        allowed, retry_after = app_module.check_lockout(ip)
+        self.assertTrue(allowed)
+        self.assertEqual(retry_after, 0)
+
+    def test_lockout_after_10_failures(self):
+        """10 failures within 5 minutes triggers a 15-minute lockout."""
+        ip = '10.1.0.2'
+        for _ in range(10):
+            app_module.record_failed_login(ip)
+        allowed, retry_after = app_module.check_lockout(ip)
+        self.assertFalse(allowed)
+        # 15-minute lockout → retry_after should be ~900 s
+        self.assertGreater(retry_after, 0)
+        self.assertLessEqual(retry_after, 901)
+
+    def test_lockout_escalates_after_20_failures(self):
+        """20 failures within 1 hour triggers a 1-hour lockout."""
+        ip = '10.1.0.3'
+        for _ in range(20):
+            app_module.record_failed_login(ip)
+        allowed, retry_after = app_module.check_lockout(ip)
+        self.assertFalse(allowed)
+        # 1-hour lockout → retry_after should be ~3600 s
+        self.assertGreater(retry_after, 0)
+        self.assertLessEqual(retry_after, 3601)
+
+    def test_permanent_lock_after_30_failures(self):
+        """30 failures within 24 hours locks the IP permanently (retry_after == 0)."""
+        ip = '10.1.0.4'
+        for _ in range(30):
+            app_module.record_failed_login(ip)
+        allowed, retry_after = app_module.check_lockout(ip)
+        self.assertFalse(allowed)
+        self.assertEqual(retry_after, 0)
+        # Confirm permanently_locked flag is set
+        with app_module._lockout_lock:
+            self.assertTrue(app_module._lockout_store[ip].get('permanently_locked'))
+
+    def test_clear_lockout_removes_state(self):
+        """clear_lockout removes the entry entirely."""
+        ip = '10.1.0.5'
+        for _ in range(10):
+            app_module.record_failed_login(ip)
+        app_module.clear_lockout(ip)
+        allowed, retry_after = app_module.check_lockout(ip)
+        self.assertTrue(allowed)
+        self.assertEqual(retry_after, 0)
+        with app_module._lockout_lock:
+            self.assertNotIn(ip, app_module._lockout_store)
+
+    def test_successful_login_clears_attempts(self):
+        """A successful login clears the lockout record for that IP."""
+        ip = '10.1.0.6'
+        _enable_auth()
+        _reset_rate_limits()
+        with flask_app.test_client() as client:
+            # Build up some failed attempts (below lockout threshold)
+            _do_failed_logins(client, ip, 5)
+            # Now succeed
+            resp = client.post(
+                '/login',
+                data=json.dumps({'username': 'testadmin', 'password': 'testpass123'}),
+                content_type='application/json',
+                environ_base={'REMOTE_ADDR': ip},
+            )
+        self.assertEqual(resp.status_code, 200)
+        # Lockout state should be gone
+        with app_module._lockout_lock:
+            self.assertNotIn(ip, app_module._lockout_store)
+
+
+class TestAccountLockoutHTTP(unittest.TestCase):
+    """Integration tests — lockout via the /login HTTP endpoint."""
+
+    def setUp(self):
+        self._config_snap = _snapshot_config()
+        _reset_lockouts()
+        _reset_rate_limits()
+
+    def tearDown(self):
+        _restore_config(self._config_snap)
+        _reset_lockouts()
+        _reset_rate_limits()
+
+    def test_login_blocked_when_locked_returns_429(self):
+        """After 10 recorded failures the login endpoint returns 429 with Retry-After header.
+
+        We inject failures directly into the lockout store to avoid colliding
+        with the separate rate-limiter (which fires first on the HTTP path).
+        """
+        _enable_auth()
+        ip = '10.2.0.1'
+        # Seed the lockout store directly so the lockout check triggers
+        for _ in range(10):
+            app_module.record_failed_login(ip)
+        with flask_app.test_client() as client:
+            resp = client.post(
+                '/login',
+                data=json.dumps({'username': 'testadmin', 'password': 'testpass123'}),
+                content_type='application/json',
+                environ_base={'REMOTE_ADDR': ip},
+            )
+        self.assertEqual(resp.status_code, 429)
+        self.assertIn('Retry-After', resp.headers)
+        data = resp.get_json()
+        self.assertFalse(data.get('success'))
+
+    def test_permanent_lock_returns_429_without_retry_after(self):
+        """After 30 recorded failures the response has no Retry-After header (permanent lock).
+
+        We inject failures directly into the lockout store to avoid colliding
+        with the separate rate-limiter.
+        """
+        _enable_auth()
+        ip = '10.2.0.2'
+        for _ in range(30):
+            app_module.record_failed_login(ip)
+        with flask_app.test_client() as client:
+            resp = client.post(
+                '/login',
+                data=json.dumps({'username': 'testadmin', 'password': 'WRONG'}),
+                content_type='application/json',
+                environ_base={'REMOTE_ADDR': ip},
+            )
+        self.assertEqual(resp.status_code, 429)
+        self.assertNotIn('Retry-After', resp.headers)
+
+
+class TestLockoutAdminEndpoints(unittest.TestCase):
+    """Tests for /api/admin/lockouts and /api/admin/unlock-ip."""
+
+    def setUp(self):
+        self._config_snap = _snapshot_config()
+        _reset_lockouts()
+        _reset_rate_limits()
+
+    def tearDown(self):
+        _restore_config(self._config_snap)
+        _reset_lockouts()
+        _reset_rate_limits()
+
+    def _login_as_admin(self, client):
+        _login(client, username='testadmin', password='testpass123')
+
+    def _login_as_user(self, client, username='regularuser', password='userpass1!'):
+        _login(client, username=username, password=password)
+
+    def _setup_with_regular_user(self):
+        _enable_auth()
+        pw_hash = generate_password_hash('userpass1!')
+        app_module.CONFIG['users'].append(
+            {'username': 'regularuser', 'password_hash': pw_hash, 'role': 'user'}
+        )
+
+    def test_lockout_list_requires_auth(self):
+        """GET /api/admin/lockouts returns 401 when not authenticated."""
+        _enable_auth()
+        with flask_app.test_client() as client:
+            resp = client.get('/api/admin/lockouts')
+        self.assertIn(resp.status_code, (401, 302))
+
+    def test_lockout_list_requires_admin(self):
+        """GET /api/admin/lockouts returns 403 for non-admin users."""
+        self._setup_with_regular_user()
+        with flask_app.test_client() as client:
+            self._login_as_user(client)
+            resp = client.get('/api/admin/lockouts')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_lockout_list_returns_locked_ips(self):
+        """GET /api/admin/lockouts returns entries for currently locked IPs."""
+        _enable_auth()
+        ip = '10.3.0.1'
+        for _ in range(10):
+            app_module.record_failed_login(ip)
+        with flask_app.test_client() as client:
+            self._login_as_admin(client)
+            resp = client.get('/api/admin/lockouts')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        ips = [entry['ip'] for entry in data['lockouts']]
+        self.assertIn(ip, ips)
+
+    def test_lockout_list_excludes_expired_lockouts(self):
+        """GET /api/admin/lockouts does not include IPs with no active lock."""
+        _enable_auth()
+        ip = '10.3.0.2'
+        # Record 5 failures — below lockout threshold
+        for _ in range(5):
+            app_module.record_failed_login(ip)
+        with flask_app.test_client() as client:
+            self._login_as_admin(client)
+            resp = client.get('/api/admin/lockouts')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        ips = [entry['ip'] for entry in data['lockouts']]
+        self.assertNotIn(ip, ips)
+
+    def test_admin_unlock_ip(self):
+        """POST /api/admin/unlock-ip clears the lockout for the specified IP."""
+        _enable_auth()
+        ip = '10.3.0.3'
+        for _ in range(10):
+            app_module.record_failed_login(ip)
+        # Confirm locked before unlock
+        allowed_before, _ = app_module.check_lockout(ip)
+        self.assertFalse(allowed_before)
+
+        with flask_app.test_client() as client:
+            self._login_as_admin(client)
+            resp = client.post(
+                '/api/admin/unlock-ip',
+                data=json.dumps({'ip': ip}),
+                content_type='application/json',
+                headers=_csrf_headers(client),
+            )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data.get('success'))
+        self.assertEqual(data.get('ip'), ip)
+
+        # Confirm no longer locked
+        allowed_after, _ = app_module.check_lockout(ip)
+        self.assertTrue(allowed_after)
+
+    def test_admin_unlock_ip_requires_admin(self):
+        """POST /api/admin/unlock-ip returns 403 for non-admin users."""
+        self._setup_with_regular_user()
+        ip = '10.3.0.4'
+        for _ in range(10):
+            app_module.record_failed_login(ip)
+        with flask_app.test_client() as client:
+            self._login_as_user(client)
+            resp = client.post(
+                '/api/admin/unlock-ip',
+                data=json.dumps({'ip': ip}),
+                content_type='application/json',
+                headers=_csrf_headers(client),
+            )
+        self.assertEqual(resp.status_code, 403)
+
+    def test_admin_unlock_ip_requires_csrf(self):
+        """POST /api/admin/unlock-ip returns 403 without CSRF token."""
+        _enable_auth()
+        ip = '10.3.0.5'
+        for _ in range(10):
+            app_module.record_failed_login(ip)
+        with flask_app.test_client() as client:
+            self._login_as_admin(client)
+            resp = client.post(
+                '/api/admin/unlock-ip',
+                data=json.dumps({'ip': ip}),
+                content_type='application/json',
+                # No X-CSRF-Token header
+            )
+        self.assertEqual(resp.status_code, 403)
+
+    def test_unlock_ip_missing_body(self):
+        """POST /api/admin/unlock-ip without 'ip' field returns 400."""
+        _enable_auth()
+        with flask_app.test_client() as client:
+            self._login_as_admin(client)
+            resp = client.post(
+                '/api/admin/unlock-ip',
+                data=json.dumps({}),
+                content_type='application/json',
+                headers=_csrf_headers(client),
+            )
+        self.assertEqual(resp.status_code, 400)
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
