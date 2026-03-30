@@ -148,6 +148,7 @@ def load_config():
         'users': [],
         'active_agents': ['architect', 'builder', 'tester', 'secops', 'devops'],
         'custom_agents': [],
+        'multi_tenant': False,
     }
     if CONFIG_FILE.exists():
         try:
@@ -198,6 +199,9 @@ CONFIG = load_config()
 config_lock = threading.Lock()
 CONFIG['sessions_dir'] = Path(__file__).parent / 'sessions'
 CONFIG['backup_dir'] = Path(__file__).parent / 'backups'
+
+# Per-user data root (created lazily; each subdir is 0700)
+USER_DATA_DIR = Path(__file__).parent / 'user-data'
 
 # Secret key: env var takes precedence, then config.json fallback, then auto-generate
 _secret_key = os.environ.get('QN_SECRET_KEY')
@@ -854,9 +858,11 @@ def build_claude_env(flags, username=None):
     """Build environment variables dict for Claude process.
     Starts from current env and adds Claude-specific vars based on flags.
 
-    If ``username`` is provided and that user has an encrypted API key stored,
-    the key is decrypted and injected as ANTHROPIC_API_KEY so it overrides any
-    key already present in the server's environment."""
+    When *username* is provided:
+    - If the user has a stored encrypted API key it is decrypted and injected
+      as ANTHROPIC_API_KEY (overrides the server environment).
+    - If multi_tenant mode is enabled, CLAUDE_CONFIG_DIR is set to the user's
+      per-user .claude/ directory so OAuth tokens are isolated per user."""
     env = os.environ.copy()
 
     # Per-user API key — decrypt and inject if available
@@ -869,6 +875,14 @@ def build_claude_env(flags, username=None):
             # Decryption failure must not prevent the session from starting;
             # Claude will fall back to whatever key is in the server env.
             logger.warning("Failed to decrypt API key for user %s: %s", username, exc)
+
+    # Per-user Claude config dir (OAuth isolation) when multi_tenant is enabled
+    if username and CONFIG.get('multi_tenant', False):
+        try:
+            user_claude_dir = get_user_claude_dir(username)
+            env['CLAUDE_CONFIG_DIR'] = str(user_claude_dir)
+        except Exception as exc:
+            logger.warning("Could not set CLAUDE_CONFIG_DIR for user %s: %s", username, exc)
 
     # Extended thinking: MAX_THINKING_TOKENS
     if flags.get('extended_thinking'):
@@ -1716,6 +1730,197 @@ print(json.dumps(result))
     return jsonify({'error': 'Invalid remote host mode'}), 400
 
 
+# ============== Multi-Host Dashboard API ==============
+
+def _build_host_entry(host):
+    """Return the public-facing host dict (safe subset of the stored record)."""
+    return {
+        'id': host.get('id', ''),
+        'name': host.get('name', host.get('hostname', '')),
+        'hostname': host.get('hostname', ''),
+        'username': host.get('username', ''),
+        'method': host.get('mode', 'ssh'),
+        'status': host.get('status', 'unknown'),
+        'group': host.get('group', ''),
+        'tags': host.get('tags', []),
+    }
+
+
+def _ssh_cmd_for_host(host):
+    """Build the base SSH command list for a configured remote host."""
+    try:
+        ssh_port = int(host.get('port', 22))
+        if not (1 <= ssh_port <= 65535):
+            ssh_port = 22
+    except (ValueError, TypeError):
+        ssh_port = 22
+
+    cmd = [
+        'ssh',
+        '-o', 'BatchMode=yes',
+        '-o', 'ConnectTimeout=5',
+        '-o', 'StrictHostKeyChecking=accept-new',
+        '-p', str(ssh_port),
+    ]
+    key_path = host.get('ssh_key_path', '')
+    if key_path:
+        expanded = os.path.expanduser(key_path)
+        if os.path.isfile(expanded):
+            cmd.extend(['-i', expanded])
+        else:
+            logger.warning("SSH key file not found for host %s: %s", host.get('id'), key_path)
+    cmd.append(f"{host['username']}@{host['hostname']}")
+    return cmd
+
+
+def _check_host_health(host):
+    """Run a lightweight SSH connectivity and version probe for a single host.
+
+    Returns a dict with keys: host_id, status, latency_ms, claude_cli_version, os, error.
+    Never raises — all exceptions are captured into the returned dict.
+    """
+    host_id = host.get('id', '')
+
+    if host.get('mode') == 'mount':
+        mount_path = os.path.expanduser(host.get('mount_path', ''))
+        if os.path.isdir(mount_path):
+            return {'host_id': host_id, 'status': 'connected', 'latency_ms': 0,
+                    'claude_cli_version': None, 'os': None, 'error': None}
+        return {'host_id': host_id, 'status': 'unreachable', 'latency_ms': None,
+                'claude_cli_version': None, 'os': None,
+                'error': f'Mount path not accessible: {mount_path}'}
+
+    # SSH mode — build and run a single probe command
+    try:
+        cmd = _ssh_cmd_for_host(host)
+    except (KeyError, TypeError) as exc:
+        return {'host_id': host_id, 'status': 'error', 'latency_ms': None,
+                'claude_cli_version': None, 'os': None, 'error': str(exc)}
+
+    probe_cmd = cmd + ['echo QNOK; claude --version 2>/dev/null || true; uname -a']
+
+    t_start = time.monotonic()
+    try:
+        result = subprocess.run(
+            probe_cmd, capture_output=True, text=True, timeout=10
+        )
+        latency_ms = int((time.monotonic() - t_start) * 1000)
+    except subprocess.TimeoutExpired:
+        return {'host_id': host_id, 'status': 'timeout', 'latency_ms': None,
+                'claude_cli_version': None, 'os': None, 'error': 'Connection timed out'}
+    except Exception as exc:
+        return {'host_id': host_id, 'status': 'error', 'latency_ms': None,
+                'claude_cli_version': None, 'os': None, 'error': str(exc)}
+
+    if result.returncode != 0 or 'QNOK' not in result.stdout:
+        err_text = result.stderr.strip() or 'SSH command failed'
+        return {'host_id': host_id, 'status': 'unreachable', 'latency_ms': latency_ms,
+                'claude_cli_version': None, 'os': None, 'error': err_text}
+
+    lines = result.stdout.splitlines()
+    claude_version = None
+    os_info = None
+    for line in lines:
+        if line.startswith('QNOK'):
+            continue
+        # claude --version outputs something like "Claude Code 2.1.86"
+        if not claude_version and re.search(r'claude', line, re.IGNORECASE):
+            m = re.search(r'(\d+\.\d+[\.\d]*)', line)
+            if m:
+                claude_version = m.group(1)
+        # uname -a starts with Linux/Darwin/FreeBSD
+        if not os_info and re.match(r'(Linux|Darwin|FreeBSD)', line, re.IGNORECASE):
+            os_info = line.strip()
+
+    return {
+        'host_id': host_id,
+        'status': 'connected',
+        'latency_ms': latency_ms,
+        'claude_cli_version': claude_version,
+        'os': os_info,
+        'error': None,
+    }
+
+
+@app.route('/api/hosts')
+@login_required
+def api_hosts_list():
+    """Return all configured remote hosts with their stored status."""
+    remote_hosts = CONFIG.get('remote_hosts', [])
+    return jsonify({'hosts': [_build_host_entry(h) for h in remote_hosts]})
+
+
+@app.route('/api/hosts/groups')
+@login_required
+def api_hosts_groups():
+    """Return unique host groups with host counts."""
+    remote_hosts = CONFIG.get('remote_hosts', [])
+    group_counts = {}
+    for host in remote_hosts:
+        group = host.get('group', '') or ''
+        group_counts[group] = group_counts.get(group, 0) + 1
+    groups = [
+        {'group': g, 'count': c}
+        for g, c in sorted(group_counts.items())
+    ]
+    return jsonify({'groups': groups})
+
+
+@app.route('/api/hosts/<host_id>/health', methods=['POST'])
+@login_required
+@csrf_protect
+def api_host_health(host_id):
+    """SSH connectivity and version probe for a specific host."""
+    host = next(
+        (h for h in CONFIG.get('remote_hosts', []) if h.get('id') == host_id), None
+    )
+    if host is None:
+        return jsonify({'error': 'Host not found'}), 404
+
+    result = _check_host_health(host)
+    return jsonify(result), 200
+
+
+@app.route('/api/hosts/health', methods=['POST'])
+@login_required
+@csrf_protect
+def api_hosts_health_batch():
+    """Check health for all configured hosts in parallel (max 10 concurrent)."""
+    remote_hosts = CONFIG.get('remote_hosts', [])
+    if not remote_hosts:
+        return jsonify({'results': []})
+
+    results = [None] * len(remote_hosts)
+    semaphore = threading.Semaphore(10)
+
+    def probe(idx, host):
+        with semaphore:
+            results[idx] = _check_host_health(host)
+
+    threads = []
+    for i, host in enumerate(remote_hosts):
+        t = threading.Thread(target=probe, args=(i, host), daemon=True)
+        threads.append(t)
+        t.start()
+
+    for t in threads:
+        t.join(timeout=15)
+
+    # Replace any None slots (timed-out threads) with an error entry
+    for i, host in enumerate(remote_hosts):
+        if results[i] is None:
+            results[i] = {
+                'host_id': host.get('id', ''),
+                'status': 'error',
+                'latency_ms': None,
+                'claude_cli_version': None,
+                'os': None,
+                'error': 'Probe thread timed out',
+            }
+
+    return jsonify({'results': results})
+
+
 @app.route('/api/session/persistent')
 @login_required
 def get_persistent_session():
@@ -1994,10 +2199,19 @@ def handle_terminal_create(data):
         except Exception as e:
             logger.error("Agent deploy failed: %s", e)
 
+    # In multi-tenant mode, verify the user has credentials before spawning
+    _terminal_owner = session.get('username', '')
+    if CONFIG.get('multi_tenant', False) and not remote_host_id:
+        if not user_has_claude_credentials(_terminal_owner):
+            emit('terminal_error', {
+                'error': 'No Claude credentials configured. '
+                         'Please set an API key or complete claude login first.'
+            })
+            return
+
     # Build command and environment (SSH-wrapped if remote)
     prompt = autonomous_task if autonomous_task else None
     cmd = build_claude_command(project_path, flags, prompt=prompt, remote_host=remote_host)
-    _terminal_owner = session.get('username', '')
     claude_env = build_claude_env(flags, username=_terminal_owner)
 
     # For SSH mode, don't chdir locally. For local/mount, chdir to project path
@@ -2307,6 +2521,129 @@ def handle_terminal_kill_tmux(data):
     _tmux_kill_session(tmux_name)
     emit('tmux_session_killed', {'tmux_session': tmux_name})
     logger.info("Killed detached tmux session %s (by %s)", tmux_name, current_user or 'anonymous')
+
+
+@socketio.on('claude_login')
+def handle_claude_login(data):
+    """Spawn ``claude login`` in a PTY for the current user.
+
+    Creates (or ensures) the per-user ``CLAUDE_CONFIG_DIR`` so OAuth tokens are
+    stored in an isolated directory.  Streams PTY output back to the caller via
+    ``claude_login_output`` events and signals completion/failure via
+    ``claude_login_done``.
+
+    The event payload is unused but must be a dict (or None).
+    """
+    if not _ws_auth_check():
+        emit('claude_login_error', {'error': 'Session expired'})
+        return
+
+    username = session.get('username', '')
+    if not username:
+        emit('claude_login_error', {'error': 'Not authenticated'})
+        return
+
+    try:
+        user_claude_dir = get_user_claude_dir(username)
+    except ValueError as exc:
+        emit('claude_login_error', {'error': str(exc)})
+        return
+
+    env = os.environ.copy()
+    env['CLAUDE_CONFIG_DIR'] = str(user_claude_dir)
+
+    logger.info("Starting claude login for user %s (CLAUDE_CONFIG_DIR=%s)", username, user_claude_dir)
+
+    sid = request.sid  # capture for the reader thread
+
+    try:
+        master_fd, slave_fd = pty.openpty()
+    except Exception as exc:
+        logger.error("Failed to open PTY for claude_login: %s", exc)
+        emit('claude_login_error', {'error': 'Failed to open terminal'})
+        return
+
+    try:
+        proc = subprocess.Popen(
+            ['claude', 'login'],
+            stdin=slave_fd,
+            stdout=slave_fd,
+            stderr=slave_fd,
+            env=env,
+            close_fds=True,
+        )
+    except FileNotFoundError:
+        os.close(master_fd)
+        os.close(slave_fd)
+        emit('claude_login_error', {'error': 'claude CLI not found'})
+        return
+    except Exception as exc:
+        os.close(master_fd)
+        os.close(slave_fd)
+        logger.error("Failed to spawn claude login: %s", exc)
+        emit('claude_login_error', {'error': 'Failed to start claude login'})
+        return
+
+    # slave_fd is inherited by the child; close it in the parent
+    os.close(slave_fd)
+
+    def _stream_output():
+        """Read PTY output and relay to the frontend until the process exits."""
+        try:
+            while True:
+                ready, _, _ = select.select([master_fd], [], [], 1.0)
+                if ready:
+                    try:
+                        chunk = os.read(master_fd, 4096)
+                    except OSError:
+                        break
+                    if not chunk:
+                        break
+                    socketio.emit('claude_login_output',
+                                  {'data': chunk.decode('utf-8', errors='replace')},
+                                  to=sid)
+                # Check if the process has exited
+                if proc.poll() is not None:
+                    # Drain any remaining output
+                    try:
+                        while True:
+                            ready2, _, _ = select.select([master_fd], [], [], 0.1)
+                            if not ready2:
+                                break
+                            chunk = os.read(master_fd, 4096)
+                            if not chunk:
+                                break
+                            socketio.emit('claude_login_output',
+                                          {'data': chunk.decode('utf-8', errors='replace')},
+                                          to=sid)
+                    except OSError:
+                        pass
+                    break
+        finally:
+            try:
+                os.close(master_fd)
+            except OSError:
+                pass
+            return_code = proc.wait()
+            success = return_code == 0
+            # Check if credentials file was actually created (process may exit 0 even on cancel)
+            cred_file = user_claude_dir / 'credentials.json'
+            has_creds = cred_file.exists()
+            socketio.emit('claude_login_done',
+                          {'success': success and has_creds,
+                           'return_code': return_code,
+                           'has_credentials': has_creds},
+                          to=sid)
+            if has_creds:
+                logger.info("claude login completed for user %s", username)
+            else:
+                logger.info("claude login exited (rc=%d, no credentials written) for user %s",
+                            return_code, username)
+
+    t = threading.Thread(target=_stream_output, daemon=True)
+    t.start()
+
+    emit('claude_login_started', {'username': username})
 
 
 @socketio.on('chat_message')
@@ -3045,6 +3382,47 @@ def get_user_api_key(username: str):
         return None
 
 
+# ============== Per-User Claude Config Directory ==============
+
+def get_user_claude_dir(username: str) -> Path:
+    """Return the per-user Claude config directory, creating it (mode 0700) if absent.
+
+    Path: <app-root>/user-data/<username>/.claude/
+
+    Raises ValueError if *username* is empty or contains path-traversal characters."""
+    if not username or '/' in username or username in ('.', '..'):
+        raise ValueError(f"Invalid username for per-user dir: {username!r}")
+    user_claude_dir = USER_DATA_DIR / username / '.claude'
+    if not user_claude_dir.exists():
+        # Create the full path with restrictive permissions (no group/other access)
+        user_claude_dir.mkdir(parents=True, exist_ok=True)
+        # Apply 0700 to the username root, not just the .claude leaf
+        user_root = USER_DATA_DIR / username
+        user_root.chmod(0o700)
+        user_claude_dir.chmod(0o700)
+    return user_claude_dir
+
+
+def user_has_claude_credentials(username: str) -> bool:
+    """Return True if *username* has any Claude credentials available.
+
+    Checks two sources in order:
+    1. Encrypted API key stored in config.json (ANTHROPIC_API_KEY path)
+    2. Per-user .claude/ directory containing a credentials.json file (OAuth path)
+    """
+    if not username:
+        return False
+    # Check API key path (issue #35)
+    if get_user_api_key(username) is not None:
+        return True
+    # Check OAuth credential file in per-user config dir
+    try:
+        cred_file = USER_DATA_DIR / username / '.claude' / 'credentials.json'
+        return cred_file.exists()
+    except Exception:
+        return False
+
+
 def get_current_user():
     """Get current logged-in user info"""
     users = CONFIG.get('users', [])
@@ -3269,6 +3647,73 @@ def api_get_api_key():
     except Exception as exc:
         logger.warning("Failed to decrypt API key for mask display (%s): %s", username, exc)
         return jsonify({'has_key': True, 'masked': '(stored — cannot display)'})
+
+
+# ============== Per-User Claude Credential API ==============
+
+@app.route('/api/user/claude-status')
+@login_required
+def api_user_claude_status():
+    """Return whether the current user has Claude credentials configured.
+
+    Checks both the API key path (ANTHROPIC_API_KEY) and the OAuth credential
+    file path (per-user .claude/credentials.json).
+
+    Response:
+        ``{"has_credentials": true|false,
+           "credential_type": "api_key"|"oauth"|null,
+           "multi_tenant": true|false}``
+    """
+    username = session.get('username', '')
+    if not username:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    multi_tenant = CONFIG.get('multi_tenant', False)
+    has_api_key = get_user_api_key(username) is not None
+    has_oauth = False
+    try:
+        cred_file = USER_DATA_DIR / username / '.claude' / 'credentials.json'
+        has_oauth = cred_file.exists()
+    except Exception:
+        pass
+
+    if has_api_key:
+        cred_type = 'api_key'
+    elif has_oauth:
+        cred_type = 'oauth'
+    else:
+        cred_type = None
+
+    return jsonify({
+        'has_credentials': has_api_key or has_oauth,
+        'credential_type': cred_type,
+        'multi_tenant': multi_tenant,
+    })
+
+
+@app.route('/api/user/claude-logout', methods=['POST'])
+@login_required
+@csrf_protect
+def api_user_claude_logout():
+    """Remove the current user's per-user Claude credential directory.
+
+    This clears OAuth tokens obtained via ``claude login``.  It does NOT
+    remove the user's stored API key — use DELETE /api/user/api-key for that.
+    """
+    username = session.get('username', '')
+    if not username:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    try:
+        user_claude_dir = USER_DATA_DIR / username / '.claude'
+        if user_claude_dir.exists():
+            import shutil
+            shutil.rmtree(str(user_claude_dir))
+            logger.info("Removed Claude credential directory for user %s", username)
+        return jsonify({'success': True})
+    except Exception as exc:
+        logger.error("Failed to remove credential dir for %s: %s", username, exc)
+        return jsonify({'error': 'Failed to remove credential directory'}), 500
 
 
 # ============== Usage & Terminals API ==============

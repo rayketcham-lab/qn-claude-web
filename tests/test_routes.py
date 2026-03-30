@@ -12,6 +12,7 @@ Run with:
 import sys
 import os
 import json
+import tempfile
 import unittest
 from datetime import datetime, timedelta
 
@@ -989,6 +990,545 @@ class TestApiKeyRoutes(unittest.TestCase):
         stored = user.get('encrypted_api_key', '')
         self.assertNotEqual(stored, plaintext, "Plaintext must not be stored in config")
         self.assertTrue(len(stored) > 0, "encrypted_api_key must be set")
+
+
+# ===========================================================================
+# Per-User Claude Config Directory Tests
+# ===========================================================================
+
+class TestUserClaudeDir(unittest.TestCase):
+    """Unit tests for get_user_claude_dir and user_has_claude_credentials."""
+
+    def setUp(self):
+        self._config_snap = _snapshot_config()
+        # Use a real temp directory so we can test actual filesystem behaviour
+        self._tmp = tempfile.mkdtemp()
+        self._orig_user_data_dir = app_module.USER_DATA_DIR
+        app_module.USER_DATA_DIR = __import__('pathlib').Path(self._tmp)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+        app_module.USER_DATA_DIR = self._orig_user_data_dir
+        _restore_config(self._config_snap)
+
+    # -- get_user_claude_dir --
+
+    def test_get_user_claude_dir_creates_directory(self):
+        """get_user_claude_dir creates the .claude directory when it does not exist."""
+        result = app_module.get_user_claude_dir('alice')
+        self.assertTrue(result.exists())
+        self.assertTrue(result.is_dir())
+        self.assertTrue(str(result).endswith('.claude'))
+
+    def test_get_user_claude_dir_returns_correct_path(self):
+        """get_user_claude_dir returns <USER_DATA_DIR>/<username>/.claude"""
+        import pathlib
+        result = app_module.get_user_claude_dir('bob')
+        expected = pathlib.Path(self._tmp) / 'bob' / '.claude'
+        self.assertEqual(result, expected)
+
+    def test_get_user_claude_dir_permissions(self):
+        """User root directory is created with mode 0700."""
+        import stat
+        import pathlib
+        app_module.get_user_claude_dir('alice')
+        user_root = pathlib.Path(self._tmp) / 'alice'
+        mode = stat.S_IMODE(user_root.stat().st_mode)
+        self.assertEqual(mode, 0o700)
+
+    def test_get_user_claude_dir_idempotent(self):
+        """Calling get_user_claude_dir twice does not raise."""
+        app_module.get_user_claude_dir('alice')
+        # Second call must not raise even though directory already exists
+        result = app_module.get_user_claude_dir('alice')
+        self.assertTrue(result.exists())
+
+    def test_get_user_claude_dir_rejects_empty_username(self):
+        """get_user_claude_dir raises ValueError for an empty username."""
+        with self.assertRaises(ValueError):
+            app_module.get_user_claude_dir('')
+
+    def test_get_user_claude_dir_rejects_path_traversal(self):
+        """get_user_claude_dir raises ValueError when username contains '/'."""
+        with self.assertRaises(ValueError):
+            app_module.get_user_claude_dir('../etc')
+
+    def test_get_user_claude_dir_rejects_dot_username(self):
+        """get_user_claude_dir raises ValueError for '.' username."""
+        with self.assertRaises(ValueError):
+            app_module.get_user_claude_dir('.')
+
+    # -- user_has_claude_credentials --
+
+    def test_user_has_no_credentials_initially(self):
+        """A brand-new user has no credentials."""
+        app_module.CONFIG['users'] = [
+            {'username': 'alice', 'password_hash': 'x', 'role': 'user'}
+        ]
+        self.assertFalse(app_module.user_has_claude_credentials('alice'))
+
+    def test_user_has_credentials_after_api_key_set(self):
+        """user_has_claude_credentials returns True when user has a stored API key."""
+        plaintext = 'sk-ant-api03-testapikey-AAAAA'
+        encrypted = app_module.encrypt_api_key(plaintext, 'alice')
+        app_module.CONFIG['users'] = [
+            {'username': 'alice', 'password_hash': 'x', 'role': 'user',
+             'encrypted_api_key': encrypted}
+        ]
+        self.assertTrue(app_module.user_has_claude_credentials('alice'))
+
+    def test_user_has_credentials_after_oauth_login(self):
+        """user_has_claude_credentials returns True when credentials.json exists."""
+        import pathlib
+        app_module.CONFIG['users'] = [
+            {'username': 'alice', 'password_hash': 'x', 'role': 'user'}
+        ]
+        # Simulate completed oauth login by dropping a credentials file
+        cred_dir = pathlib.Path(self._tmp) / 'alice' / '.claude'
+        cred_dir.mkdir(parents=True, exist_ok=True)
+        (cred_dir / 'credentials.json').write_text('{}')
+        self.assertTrue(app_module.user_has_claude_credentials('alice'))
+
+    def test_user_has_credentials_empty_username(self):
+        """user_has_claude_credentials returns False for empty username."""
+        self.assertFalse(app_module.user_has_claude_credentials(''))
+
+    # -- build_claude_env with multi_tenant --
+
+    def test_build_claude_env_sets_config_dir_in_multi_tenant(self):
+        """build_claude_env sets CLAUDE_CONFIG_DIR when multi_tenant=True."""
+        app_module.CONFIG['multi_tenant'] = True
+        app_module.CONFIG['users'] = [
+            {'username': 'alice', 'password_hash': 'x', 'role': 'user'}
+        ]
+        env = app_module.build_claude_env({}, username='alice')
+        self.assertIn('CLAUDE_CONFIG_DIR', env)
+        self.assertIn('alice', env['CLAUDE_CONFIG_DIR'])
+        self.assertIn('.claude', env['CLAUDE_CONFIG_DIR'])
+
+    def test_build_claude_env_ignores_config_dir_in_solo_mode(self):
+        """build_claude_env does NOT set CLAUDE_CONFIG_DIR when multi_tenant=False."""
+        app_module.CONFIG['multi_tenant'] = False
+        app_module.CONFIG['users'] = [
+            {'username': 'alice', 'password_hash': 'x', 'role': 'user'}
+        ]
+        env = app_module.build_claude_env({}, username='alice')
+        self.assertNotIn('CLAUDE_CONFIG_DIR', env)
+
+    def test_build_claude_env_no_config_dir_without_username(self):
+        """build_claude_env does NOT set CLAUDE_CONFIG_DIR when no username given."""
+        app_module.CONFIG['multi_tenant'] = True
+        env = app_module.build_claude_env({}, username=None)
+        self.assertNotIn('CLAUDE_CONFIG_DIR', env)
+
+
+class TestUserClaudeStatusRoutes(unittest.TestCase):
+    """Integration tests for GET /api/user/claude-status and POST /api/user/claude-logout."""
+
+    def setUp(self):
+        self._config_snap = _snapshot_config()
+        _reset_rate_limits()
+        _enable_auth()
+        # Redirect USER_DATA_DIR to a temp dir for filesystem isolation
+        self._tmp = tempfile.mkdtemp()
+        self._orig_user_data_dir = app_module.USER_DATA_DIR
+        app_module.USER_DATA_DIR = __import__('pathlib').Path(self._tmp)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self._tmp, ignore_errors=True)
+        app_module.USER_DATA_DIR = self._orig_user_data_dir
+        _restore_config(self._config_snap)
+        _reset_rate_limits()
+
+    def test_claude_status_requires_auth(self):
+        """GET /api/user/claude-status returns 401 when not logged in."""
+        with flask_app.test_client() as client:
+            resp = client.get('/api/user/claude-status')
+        self.assertEqual(resp.status_code, 401)
+
+    def test_claude_status_no_credentials(self):
+        """GET /api/user/claude-status returns has_credentials=False initially."""
+        with flask_app.test_client() as client:
+            _login(client)
+            resp = client.get('/api/user/claude-status')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertFalse(data['has_credentials'])
+        self.assertIsNone(data['credential_type'])
+
+    def test_claude_status_with_api_key(self):
+        """GET /api/user/claude-status returns credential_type=api_key when key is set."""
+        plaintext = 'sk-ant-api03-testapikey-AAAAA'
+        encrypted = app_module.encrypt_api_key(plaintext, 'testadmin')
+        users = app_module.CONFIG.get('users', [])
+        for u in users:
+            if u['username'] == 'testadmin':
+                u['encrypted_api_key'] = encrypted
+        with flask_app.test_client() as client:
+            _login(client)
+            resp = client.get('/api/user/claude-status')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data['has_credentials'])
+        self.assertEqual(data['credential_type'], 'api_key')
+
+    def test_claude_status_with_oauth_file(self):
+        """GET /api/user/claude-status returns credential_type=oauth when credentials.json exists."""
+        import pathlib
+        cred_dir = pathlib.Path(self._tmp) / 'testadmin' / '.claude'
+        cred_dir.mkdir(parents=True, exist_ok=True)
+        (cred_dir / 'credentials.json').write_text('{}')
+        with flask_app.test_client() as client:
+            _login(client)
+            resp = client.get('/api/user/claude-status')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data['has_credentials'])
+        self.assertEqual(data['credential_type'], 'oauth')
+
+    def test_claude_status_returns_multi_tenant_flag(self):
+        """GET /api/user/claude-status includes the current multi_tenant setting."""
+        app_module.CONFIG['multi_tenant'] = True
+        with flask_app.test_client() as client:
+            _login(client)
+            resp = client.get('/api/user/claude-status')
+        data = resp.get_json()
+        self.assertTrue(data['multi_tenant'])
+
+    def test_claude_logout_requires_auth(self):
+        """POST /api/user/claude-logout returns 401 when not logged in."""
+        with flask_app.test_client() as client:
+            resp = client.post('/api/user/claude-logout')
+        self.assertEqual(resp.status_code, 401)
+
+    def test_claude_logout_requires_csrf(self):
+        """POST /api/user/claude-logout returns 403 without CSRF token."""
+        with flask_app.test_client() as client:
+            _login(client)
+            resp = client.post(
+                '/api/user/claude-logout',
+                data=json.dumps({}),
+                content_type='application/json',
+            )
+        self.assertEqual(resp.status_code, 403)
+
+    def test_claude_logout_removes_credential_dir(self):
+        """POST /api/user/claude-logout removes the per-user .claude directory."""
+        import pathlib
+        cred_dir = pathlib.Path(self._tmp) / 'testadmin' / '.claude'
+        cred_dir.mkdir(parents=True, exist_ok=True)
+        (cred_dir / 'credentials.json').write_text('{}')
+        self.assertTrue(cred_dir.exists())
+
+        with flask_app.test_client() as client:
+            _login(client)
+            headers = _csrf_headers(client)
+            resp = client.post('/api/user/claude-logout', headers=headers)
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.get_json().get('success'))
+        self.assertFalse(cred_dir.exists())
+
+    def test_claude_logout_succeeds_when_no_dir(self):
+        """POST /api/user/claude-logout returns success even when directory doesn't exist."""
+        with flask_app.test_client() as client:
+            _login(client)
+            headers = _csrf_headers(client)
+            resp = client.post('/api/user/claude-logout', headers=headers)
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.get_json().get('success'))
+
+
+# ===========================================================================
+# Multi-Host Dashboard API Tests
+# ===========================================================================
+
+def _make_ssh_host(host_id='srv1', name='Test Server', group='', tags=None):
+    """Return a minimal remote_hosts entry for SSH mode."""
+    return {
+        'id': host_id,
+        'name': name,
+        'hostname': '10.0.0.1',
+        'username': 'deploy',
+        'mode': 'ssh',
+        'port': 22,
+        'ssh_key_path': '',
+        'group': group,
+        'tags': tags or [],
+    }
+
+
+class TestHostsListEndpoint(unittest.TestCase):
+
+    def setUp(self):
+        self._config_snap = _snapshot_config()
+
+    def tearDown(self):
+        _restore_config(self._config_snap)
+
+    def test_hosts_list_returns_configured_hosts(self):
+        """GET /api/hosts returns all configured remote hosts."""
+        _disable_auth()
+        app_module.CONFIG['remote_hosts'] = [
+            _make_ssh_host('srv1', 'Production', group='prod', tags=['web']),
+            _make_ssh_host('srv2', 'Staging', group='staging'),
+        ]
+        with flask_app.test_client() as client:
+            resp = client.get('/api/hosts')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertIn('hosts', data)
+        self.assertEqual(len(data['hosts']), 2)
+        ids = [h['id'] for h in data['hosts']]
+        self.assertIn('srv1', ids)
+        self.assertIn('srv2', ids)
+
+    def test_hosts_list_empty_when_no_remote_hosts(self):
+        """GET /api/hosts returns an empty list when no hosts are configured."""
+        _disable_auth()
+        app_module.CONFIG['remote_hosts'] = []
+        with flask_app.test_client() as client:
+            resp = client.get('/api/hosts')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertEqual(data.get('hosts'), [])
+
+    def test_hosts_list_requires_auth(self):
+        """GET /api/hosts returns 401 when auth is enabled and user is not logged in."""
+        _enable_auth()
+        app_module.CONFIG['remote_hosts'] = [_make_ssh_host()]
+        with flask_app.test_client() as client:
+            resp = client.get('/api/hosts')
+        self.assertEqual(resp.status_code, 401)
+
+    def test_hosts_list_host_fields(self):
+        """GET /api/hosts response includes expected public fields."""
+        _disable_auth()
+        app_module.CONFIG['remote_hosts'] = [
+            _make_ssh_host('s1', 'My Server', group='prod', tags=['linux', 'web'])
+        ]
+        with flask_app.test_client() as client:
+            resp = client.get('/api/hosts')
+        host = resp.get_json()['hosts'][0]
+        for field in ('id', 'name', 'hostname', 'username', 'method', 'status', 'group', 'tags'):
+            self.assertIn(field, host, f"Missing field: {field}")
+        self.assertEqual(host['id'], 's1')
+        self.assertEqual(host['group'], 'prod')
+        self.assertEqual(host['tags'], ['linux', 'web'])
+
+    def test_hosts_list_accessible_when_logged_in(self):
+        """GET /api/hosts returns 200 when auth is enabled and user is logged in."""
+        _enable_auth()
+        app_module.CONFIG['remote_hosts'] = [_make_ssh_host()]
+        with flask_app.test_client() as client:
+            _login(client)
+            resp = client.get('/api/hosts')
+        self.assertEqual(resp.status_code, 200)
+
+
+class TestHostsGroupsEndpoint(unittest.TestCase):
+
+    def setUp(self):
+        self._config_snap = _snapshot_config()
+
+    def tearDown(self):
+        _restore_config(self._config_snap)
+
+    def test_hosts_groups_returns_unique_groups(self):
+        """GET /api/hosts/groups returns distinct groups with counts."""
+        _disable_auth()
+        app_module.CONFIG['remote_hosts'] = [
+            _make_ssh_host('s1', group='production'),
+            _make_ssh_host('s2', group='production'),
+            _make_ssh_host('s3', group='staging'),
+        ]
+        with flask_app.test_client() as client:
+            resp = client.get('/api/hosts/groups')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertIn('groups', data)
+        by_name = {g['group']: g['count'] for g in data['groups']}
+        self.assertEqual(by_name.get('production'), 2)
+        self.assertEqual(by_name.get('staging'), 1)
+
+    def test_hosts_groups_empty_when_no_hosts(self):
+        """GET /api/hosts/groups returns empty list when no hosts configured."""
+        _disable_auth()
+        app_module.CONFIG['remote_hosts'] = []
+        with flask_app.test_client() as client:
+            resp = client.get('/api/hosts/groups')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.get_json().get('groups'), [])
+
+    def test_hosts_groups_requires_auth(self):
+        """GET /api/hosts/groups returns 401 when not logged in."""
+        _enable_auth()
+        app_module.CONFIG['remote_hosts'] = [_make_ssh_host(group='prod')]
+        with flask_app.test_client() as client:
+            resp = client.get('/api/hosts/groups')
+        self.assertEqual(resp.status_code, 401)
+
+    def test_hosts_groups_no_group_field(self):
+        """Hosts without a group field are grouped under empty string."""
+        _disable_auth()
+        host = _make_ssh_host('s1')
+        host.pop('group', None)
+        app_module.CONFIG['remote_hosts'] = [host]
+        with flask_app.test_client() as client:
+            resp = client.get('/api/hosts/groups')
+        data = resp.get_json()
+        by_name = {g['group']: g['count'] for g in data['groups']}
+        self.assertEqual(by_name.get(''), 1)
+
+
+class TestHostHealthEndpoint(unittest.TestCase):
+
+    def setUp(self):
+        self._config_snap = _snapshot_config()
+
+    def tearDown(self):
+        _restore_config(self._config_snap)
+
+    def test_host_health_check_unknown_host_returns_404(self):
+        """POST /api/hosts/<host_id>/health returns 404 for an unknown host ID."""
+        _disable_auth()
+        app_module.CONFIG['remote_hosts'] = []
+        with flask_app.test_client() as client:
+            resp = client.post('/api/hosts/nonexistent/health',
+                               content_type='application/json')
+        self.assertEqual(resp.status_code, 404)
+        data = resp.get_json()
+        self.assertIn('error', data)
+
+    def test_host_health_requires_auth(self):
+        """POST /api/hosts/<host_id>/health returns 401 when not logged in."""
+        _enable_auth()
+        app_module.CONFIG['remote_hosts'] = [_make_ssh_host('s1')]
+        with flask_app.test_client() as client:
+            resp = client.post('/api/hosts/s1/health',
+                               content_type='application/json')
+        self.assertEqual(resp.status_code, 401)
+
+    def test_host_health_requires_csrf(self):
+        """POST /api/hosts/<host_id>/health returns 403 without CSRF token."""
+        _enable_auth()
+        app_module.CONFIG['remote_hosts'] = [_make_ssh_host('s1')]
+        with flask_app.test_client() as client:
+            _login(client)
+            resp = client.post('/api/hosts/s1/health',
+                               data='{}',
+                               content_type='application/json')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_host_health_returns_result_fields(self):
+        """POST /api/hosts/<host_id>/health response contains expected keys."""
+        import unittest.mock as mock
+        _disable_auth()
+        app_module.CONFIG['remote_hosts'] = [_make_ssh_host('s1')]
+
+        fake_result = mock.MagicMock()
+        fake_result.returncode = 0
+        fake_result.stdout = 'QNOK\nLinux testbox 5.15.0 #1 SMP x86_64 GNU/Linux\n'
+        fake_result.stderr = ''
+
+        with mock.patch('subprocess.run', return_value=fake_result):
+            with flask_app.test_client() as client:
+                resp = client.post('/api/hosts/s1/health',
+                                   content_type='application/json')
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        for field in ('host_id', 'status', 'latency_ms', 'claude_cli_version', 'os', 'error'):
+            self.assertIn(field, data, f"Missing field: {field}")
+        self.assertEqual(data['status'], 'connected')
+        self.assertEqual(data['host_id'], 's1')
+
+    def test_host_health_ssh_failure_returns_unreachable(self):
+        """POST /api/hosts/<host_id>/health reflects unreachable status on SSH failure."""
+        import unittest.mock as mock
+        _disable_auth()
+        app_module.CONFIG['remote_hosts'] = [_make_ssh_host('s1')]
+
+        fake_result = mock.MagicMock()
+        fake_result.returncode = 255
+        fake_result.stdout = ''
+        fake_result.stderr = 'Connection refused'
+
+        with mock.patch('subprocess.run', return_value=fake_result):
+            with flask_app.test_client() as client:
+                resp = client.post('/api/hosts/s1/health',
+                                   content_type='application/json')
+
+        data = resp.get_json()
+        self.assertEqual(data['status'], 'unreachable')
+        self.assertIsNotNone(data.get('error'))
+
+    def test_host_health_ssh_timeout_returns_timeout_status(self):
+        """POST /api/hosts/<host_id>/health returns timeout status on subprocess timeout."""
+        import unittest.mock as mock
+        import subprocess as _sp
+        _disable_auth()
+        app_module.CONFIG['remote_hosts'] = [_make_ssh_host('s1')]
+
+        with mock.patch('subprocess.run',
+                        side_effect=_sp.TimeoutExpired(cmd='ssh', timeout=10)):
+            with flask_app.test_client() as client:
+                resp = client.post('/api/hosts/s1/health',
+                                   content_type='application/json')
+
+        data = resp.get_json()
+        self.assertEqual(data['status'], 'timeout')
+
+
+class TestHostsBatchHealthEndpoint(unittest.TestCase):
+
+    def setUp(self):
+        self._config_snap = _snapshot_config()
+
+    def tearDown(self):
+        _restore_config(self._config_snap)
+
+    def test_batch_health_empty_hosts(self):
+        """POST /api/hosts/health returns empty results when no hosts configured."""
+        _disable_auth()
+        app_module.CONFIG['remote_hosts'] = []
+        with flask_app.test_client() as client:
+            resp = client.post('/api/hosts/health', content_type='application/json')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.get_json().get('results'), [])
+
+    def test_batch_health_requires_auth(self):
+        """POST /api/hosts/health returns 401 when not logged in."""
+        _enable_auth()
+        app_module.CONFIG['remote_hosts'] = [_make_ssh_host()]
+        with flask_app.test_client() as client:
+            resp = client.post('/api/hosts/health', content_type='application/json')
+        self.assertEqual(resp.status_code, 401)
+
+    def test_batch_health_returns_result_per_host(self):
+        """POST /api/hosts/health returns one result entry per configured host."""
+        import unittest.mock as mock
+        _disable_auth()
+        app_module.CONFIG['remote_hosts'] = [
+            _make_ssh_host('s1'),
+            _make_ssh_host('s2'),
+        ]
+
+        fake_result = mock.MagicMock()
+        fake_result.returncode = 0
+        fake_result.stdout = 'QNOK\nLinux box 5.15.0\n'
+        fake_result.stderr = ''
+
+        with mock.patch('subprocess.run', return_value=fake_result):
+            with flask_app.test_client() as client:
+                resp = client.post('/api/hosts/health', content_type='application/json')
+
+        self.assertEqual(resp.status_code, 200)
+        results = resp.get_json().get('results', [])
+        self.assertEqual(len(results), 2)
+        host_ids = {r['host_id'] for r in results}
+        self.assertEqual(host_ids, {'s1', 's2'})
 
 
 if __name__ == '__main__':
