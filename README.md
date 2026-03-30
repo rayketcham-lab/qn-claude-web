@@ -1,6 +1,6 @@
-# QN Claude Web
+# QN Code Assistant
 
-**Self-hosted web frontend for Claude Code CLI** — access Claude Code from any browser, any device, anywhere on your network.
+**Self-hosted web UI for Claude Code CLI — access AI-powered development from any browser**
 
 Python + Flask + xterm.js. No build step. Vendored dependencies. One command to run.
 
@@ -10,27 +10,13 @@ Python + Flask + xterm.js. No build step. Vendored dependencies. One command to 
 
 ### Project Health
 
-<!-- CI / Testing Pipeline -->
 [![CI](https://github.com/rayketcham-lab/qn-claude-web/actions/workflows/ci.yml/badge.svg)](https://github.com/rayketcham-lab/qn-claude-web/actions/workflows/ci.yml)
 [![Security Scans](https://github.com/rayketcham-lab/qn-claude-web/actions/workflows/security.yml/badge.svg)](https://github.com/rayketcham-lab/qn-claude-web/actions/workflows/security.yml)
-
-<!-- Security & Compliance -->
-[![Rate Limiting](https://img.shields.io/badge/rate%20limiting-enabled-brightgreen?logo=hackthebox&logoColor=white)](https://github.com/rayketcham-lab/qn-claude-web)
-[![CSP Headers](https://img.shields.io/badge/CSP-enforced-brightgreen?logo=mozilla&logoColor=white)](https://github.com/rayketcham-lab/qn-claude-web)
-[![Path Traversal](https://img.shields.io/badge/path%20traversal-hardened-brightgreen?logo=shieldsdotio&logoColor=white)](https://github.com/rayketcham-lab/qn-claude-web)
-[![XSS Prevention](https://img.shields.io/badge/XSS-protected-brightgreen?logo=owasp&logoColor=white)](https://github.com/rayketcham-lab/qn-claude-web)
-
-<!-- Project Info -->
-[![Version](https://img.shields.io/badge/version-1.5.1-blue?logo=semver&logoColor=white)](https://github.com/rayketcham-lab/qn-claude-web/releases)
+[![Version](https://img.shields.io/badge/version-1.6.1-blue?logo=semver&logoColor=white)](https://github.com/rayketcham-lab/qn-claude-web/releases)
 [![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python&logoColor=white)](https://www.python.org/)
-[![Flask](https://img.shields.io/badge/Flask-SocketIO-blue?logo=flask&logoColor=white)](https://flask-socketio.readthedocs.io/)
-[![xterm.js](https://img.shields.io/badge/xterm.js-terminal-blue?logo=windowsterminal&logoColor=white)](https://xtermjs.org/)
-
-<!-- Build & Quality -->
-[![Vendored Deps](https://img.shields.io/badge/dependencies-vendored-brightgreen?logo=python&logoColor=white)](https://github.com/rayketcham-lab/qn-claude-web)
-[![No Build Step](https://img.shields.io/badge/build%20step-none-brightgreen?logo=javascript&logoColor=white)](https://github.com/rayketcham-lab/qn-claude-web)
-[![PWA](https://img.shields.io/badge/PWA-installable-blueviolet?logo=pwa&logoColor=white)](https://github.com/rayketcham-lab/qn-claude-web)
-[![Themes](https://img.shields.io/badge/themes-4%20built--in-blue?logo=css3&logoColor=white)](https://github.com/rayketcham-lab/qn-claude-web)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![Vendored Deps](https://img.shields.io/badge/dependencies-vendored-brightgreen?logo=python&logoColor=white)](vendor/)
+[![No Build Step](https://img.shields.io/badge/build%20step-none-brightgreen)](https://github.com/rayketcham-lab/qn-claude-web)
 
 ---
 
@@ -39,61 +25,87 @@ Python + Flask + xterm.js. No build step. Vendored dependencies. One command to 
 - [Overview](#overview)
 - [Quick Start](#quick-start)
 - [Features](#features)
-- [Architecture](#architecture)
+- [Requirements](#requirements)
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Remote Servers](#remote-servers)
-- [API Reference](#api-reference)
+- [Architecture](#architecture)
 - [Security](#security)
 - [Troubleshooting](#troubleshooting)
 - [Disclaimer](#disclaimer)
 - [License](#license)
 
+---
+
 ## Overview
 
-QN Claude Web is a self-hosted web interface that wraps the Claude Code CLI, giving you browser-based access to Claude Code from any device on your network — laptops, phones, tablets. It provides:
+QN Code Assistant is a self-hosted web interface that wraps the [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code), giving you browser-based access from any device on your network — laptops, phones, tablets.
 
-- **Terminal emulator** — full PTY-backed xterm.js terminals with tmux session persistence
-- **Chat interface** — persistent conversations with markdown rendering and streaming
-- **Project browser** — directory navigation with auto-detection of project types
-- **Remote server management** — SSH into remote hosts with guided key setup
-- **File browser** — syntax-highlighted file viewing with breadcrumb navigation
-- **Autonomous mode** — unattended Claude Code sessions with task management
+**Why this exists:** Claude Code is a powerful CLI tool, but it chains you to a local terminal. QN Code Assistant breaks that constraint. Run it on a server and work from any browser, on any device, from anywhere on your network.
 
-All dependencies are vendored — no pip install, no npm build, no Docker required.
+Key capabilities:
+
+- **Browser-based Claude Code access** — full PTY-backed terminal emulation via xterm.js, with tmux session persistence that survives disconnects and browser refreshes
+- **AI agent team deployment** — launch and orchestrate 20+ specialized Claude Code agents (Architect, Builder, Tester, SecOps, DevOps) directly from the UI
+- **Autonomous mode** — unattended Claude Code sessions with configurable auto-restart and task management
+- **Remote server management** — guided 5-step SSH wizard for adding remote hosts, with autonomous key generation and exchange
+- **Multi-user auth with RBAC** — password-protected access, multiple user accounts, role-based permissions
+- **Pure Python, zero Node.js** — 14 Python packages vendored in `vendor/`, no pip install at runtime, no npm, no build step
+
+---
 
 ## Quick Start
 
 ```bash
-# Clone and run
+# 1. Download
+curl -O https://your-server/qn-code-assistant-v1.6.1.sh
+
+# 2. Install
+bash qn-code-assistant-v1.6.1.sh
+
+# 3. Access
+# Open http://your-server:5001 in your browser
+```
+
+Or clone and run directly:
+
+```bash
 git clone https://github.com/rayketcham-lab/qn-claude-web.git
 cd qn-claude-web
 python3 app.py
 ```
 
-Open `http://localhost:5001` in your browser. For LAN access: `http://<server-ip>:5001`
+Open `http://localhost:5001`. For LAN access: `http://<server-ip>:5001`
 
-> **Prerequisite:** [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) must be installed and in PATH.
+---
 
 ## Features
 
-### Terminal & Chat
+### Terminal
 
 | Feature | Description |
 |---------|-------------|
-| **Terminal Emulator** | Full xterm.js terminal with PTY support, multiple tabs, tmux persistence |
-| **Chat Interface** | Persistent sessions, markdown rendering, streaming responses |
+| **PTY Terminal** | Full xterm.js terminal with PTY support and multiple tabs |
+| **tmux Persistence** | Sessions survive browser disconnects and page refreshes |
+| **Autonomous Mode** | Unattended Claude Code sessions with auto-restart |
+| **Agent Teams** | Launch Architect, Builder, Tester, SecOps, DevOps agents |
+| **Git Integration** | Branch and status display in the terminal toolbar |
+
+### Chat Interface
+
+| Feature | Description |
+|---------|-------------|
+| **Persistent Sessions** | Conversations saved to disk, searchable by content |
+| **Streaming** | Responses stream in real time with markdown rendering |
+| **Export** | Save any chat session as a markdown file |
 | **Session Search** | Full-text search across all saved conversations |
-| **Export** | Export chat sessions as markdown files |
-| **Keyboard Shortcuts** | Ctrl+T new terminal, Ctrl+K focus chat, Ctrl+1/2/3 switch views |
 
 ### Project & File Management
 
 | Feature | Description |
 |---------|-------------|
-| **Project Browser** | Browse directories, auto-detect project types (git, node, python, rust, claude) |
-| **File Browser** | Directory tree, syntax highlighting, breadcrumb navigation |
-| **Git Integration** | Branch and status display in terminal toolbar |
+| **Project Browser** | Directory navigation with auto-detection of project types |
+| **File Browser** | Syntax-highlighted file viewing with breadcrumb navigation |
 | **CLAUDE.md Wizard** | One-click deploy of project instructions and agent configs |
 
 ### Infrastructure
@@ -101,111 +113,92 @@ Open `http://localhost:5001` in your browser. For LAN access: `http://<server-ip
 | Feature | Description |
 |---------|-------------|
 | **Remote Servers** | SSH and mount-based remote host support with guided setup wizard |
-| **Authentication** | Password-protected access with multi-user support and role-based access |
+| **Multi-user Auth** | Password-protected access with RBAC — admin and user roles |
 | **HTTPS** | Auto-generated self-signed certs or custom certificate paths |
-| **PWA** | Installable as standalone app on mobile devices |
+| **PWA** | Installable as a standalone app on mobile devices |
 | **Themes** | Dark, Midnight Blue, Solarized Dark, Light |
 | **Usage Tracking** | Token usage monitoring with weekly reset counters |
-| **Autonomous Mode** | Unattended Claude Code sessions with auto-restart and task management |
 
-## Architecture
+---
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│                    Browser (Any Device)                       │
-│          xterm.js Terminal  │  Chat UI  │  File Browser       │
-├──────────────────────────────────────────────────────────────┤
-│                     WebSocket (SocketIO)                      │
-├──────────────────────────────────────────────────────────────┤
-│                      Flask + SocketIO                         │
-│                    async_mode='threading'                      │
-├────────────┬──────────────┬──────────────┬───────────────────┤
-│ PTY/tmux   │ Claude Code  │ SSH Manager  │ File API          │
-│ Terminal   │ CLI Bridge   │ Remote Hosts │ Project Detection  │
-│ Manager    │ Chat Sessions│ Key Exchange │ Path Validation    │
-├────────────┴──────────────┴──────────────┴───────────────────┤
-│                   Vendored Python Packages                    │
-│        Flask, SocketIO, Werkzeug, MarkupSafe, ...            │
-└──────────────────────────────────────────────────────────────┘
-```
+## Requirements
 
-### Directory Structure
+- **Python 3.10+** — `python3 --version`
+- **tmux** — `tmux -V` (for session persistence)
+- **Claude Code CLI** — installed and available in `PATH`
 
-```
-qn-claude-web/
-├── app.py                  # Flask backend + WebSocket handlers (~2500 lines)
-├── templates/
-│   ├── index.html          # Main dashboard (single-page app)
-│   └── login.html          # Login/setup page
-├── static/
-│   ├── css/style.css       # Themed styling (dark theme default)
-│   ├── js/app.js           # Client-side JavaScript (ClaudeCodeWeb class)
-│   ├── sw.js               # Service worker (PWA offline support)
-│   └── manifest.json       # PWA manifest
-├── .claude/                # Claude Code project configuration
-│   ├── agents/             # Agent definitions (architect, builder, secops, ...)
-│   ├── rules/              # Language and project standards
-│   ├── skills/             # Slash command skills
-│   └── settings.json       # Permission and environment config
-├── vendor/                 # Vendored Python dependencies (14 packages)
-├── sessions/               # Saved chat sessions (JSON, gitignored)
-├── config.json             # Runtime configuration (gitignored)
-├── build-installer.sh      # Installer generator with SHA-256 hashes
-├── build-release.sh        # Self-extracting installer builder
-└── qn-code-assistant.service  # systemd unit file
-```
+The Python dependencies are vendored — no additional pip installs required.
+
+---
 
 ## Installation
 
 ### Self-Extracting Installer (Recommended)
 
-Download the latest release and run:
-
 ```bash
-chmod +x qn-claude-web-v1.5.1.sh
-./qn-claude-web-v1.5.1.sh
+curl -O https://your-server/qn-code-assistant-v1.6.1.sh
+bash qn-code-assistant-v1.6.1.sh
 ```
 
-The installer verifies SHA-256 hashes, extracts files, and runs interactive setup.
+The installer verifies SHA-256 hashes for all files, extracts to `/opt/claude-web`, and runs interactive setup.
 
 ### Manual Setup
 
 ```bash
 git clone https://github.com/rayketcham-lab/qn-claude-web.git /opt/claude-web
-cd /opt/claude-web
-python3 app.py
+python3 /opt/claude-web/app.py
 ```
-
-Dependencies are vendored — no `pip install` needed.
 
 ### Systemd Service
 
 ```bash
-sudo cp qn-code-assistant.service /etc/systemd/system/
+sudo cp /opt/claude-web/qn-code-assistant.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable qn-code-assistant
 sudo systemctl start qn-code-assistant
 ```
 
-Monitor logs:
+Check logs:
+
 ```bash
 sudo journalctl -u qn-code-assistant -f
 ```
 
+---
+
 ## Configuration
 
-Settings are managed through the web UI (Settings icon). Configuration is persisted in `config.json`:
+Settings are managed through the web UI (Settings icon in the sidebar) and persisted in `config.json`.
+
+### Key Settings
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `port` | `5001` | Server port |
+| `port` | `5001` | Server listening port |
 | `projects_root` | `/opt` | Root directory for project browsing |
 | `allowed_paths` | `["/opt"]` | Directories allowed for file access |
-| `max_concurrent_terminals` | `5` | Max simultaneous terminal sessions |
-| `max_concurrent_chats` | `10` | Max simultaneous chat processes |
+| `max_concurrent_terminals` | `5` | Maximum simultaneous terminal sessions |
+| `max_concurrent_chats` | `10` | Maximum simultaneous chat processes |
 | `process_timeout_minutes` | `60` | Watchdog timeout for stale processes |
 | `auth.enabled` | `false` | Enable password authentication |
 | `ssl_enabled` | `false` | Enable HTTPS |
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `QN_SECRET_KEY` | Flask session secret key — **set this in production** |
+| `QN_PORT` | Override server port (also settable in `config.json`) |
+| `QN_CONFIG_PATH` | Path to `config.json` (default: `config.json` in app directory) |
+
+**Production note:** Always set `QN_SECRET_KEY` to a long random value. Do not rely on the auto-generated key across restarts if you need session continuity.
+
+```bash
+export QN_SECRET_KEY="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+python3 /opt/claude-web/app.py
+```
+
+---
 
 ## Remote Servers
 
@@ -213,55 +206,94 @@ Add remote hosts via **Settings > Remote Hosts > Add Remote Host**. The 5-step w
 
 1. **Method** — Choose SSH or mount-based connection
 2. **Connect** — Enter host details or import from `~/.ssh/config`
-3. **SSH Key Setup** — Auto-generates ed25519 key and pushes via sshpass
-4. **Verify** — Tests SSH connection and detects Claude CLI on remote
-5. **Save** — One-click save with auto-suggested name
+3. **SSH Key Setup** — Auto-generates an ed25519 key and pushes it via sshpass
+4. **Verify** — Tests the SSH connection and detects Claude CLI on the remote host
+5. **Save** — One-click save with auto-suggested display name
 
-Supports two modes:
-- **SSH mode** — runs Claude Code on the remote host
-- **Mount mode** — runs local Claude Code on a mounted remote filesystem
+Two connection modes are supported:
 
-## API Reference
+- **SSH mode** — runs Claude Code on the remote host over SSH
+- **Mount mode** — runs local Claude Code on a remotely mounted filesystem
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` | GET | Main dashboard |
-| `/login` | GET/POST | Authentication |
-| `/api/projects` | GET | List projects in root directory |
-| `/api/projects/root` | POST | Set projects root path |
-| `/api/config` | GET/POST | Read/write configuration |
-| `/api/files` | GET | Browse directory contents |
-| `/api/files/read` | GET | Read file with syntax detection |
-| `/api/session/*` | GET/POST | Session CRUD operations |
-| `/api/sessions` | GET | List all saved sessions |
-| `/api/sessions/search` | GET | Full-text search across sessions |
-| `/api/remote/test` | POST | Test remote host connection |
-| `/api/remote/ssh-config` | GET | Parse SSH config file |
-| `/api/remote/ssh-setup` | GET/POST | SSH key management |
-| `/api/remote/push-key` | POST | Push SSH key to remote host |
-| `/api/remote/<id>/projects` | GET | Browse remote host projects |
-| `/api/project/detect` | GET | Auto-detect project type |
-| `/api/project/init` | POST | Generate CLAUDE.md for project |
-| `/api/users` | GET/POST/PUT | User management |
-| `/api/usage` | GET | Token usage statistics |
-| `/api/status` | GET | Health check endpoint |
+---
+
+## Architecture
+
+```
++----------------------------------------------------------+
+|                 Browser (Any Device)                     |
+|     xterm.js Terminal  |  Chat UI  |  File Browser       |
++----------------------------------------------------------+
+|                  WebSocket (SocketIO)                    |
++----------------------------------------------------------+
+|                   Flask + SocketIO                       |
+|               async_mode='threading'                     |
++---------------+----------+-------------+----------------+
+| PTY / tmux    | Claude   | SSH Manager | File API       |
+| Terminal Mgr  | Code CLI | Remote Hosts| Project Detect |
++---------------+----------+-------------+----------------+
+|              Vendored Python Packages                    |
+|     Flask, SocketIO, Werkzeug, MarkupSafe, ...          |
++----------------------------------------------------------+
+```
+
+### Stack
+
+- **Backend:** Flask + Flask-SocketIO (`async_mode='threading'`), single-file `app.py`
+- **Frontend:** Vanilla JS (`ClaudeCodeWeb` class in `static/js/app.js`), no framework, no build step
+- **Terminal:** xterm.js with PTY backend (`pty.fork()` + `select`), tmux for session persistence
+- **Dependencies:** 14 Python packages vendored in `vendor/` — no runtime pip installs
+
+### Directory Structure
+
+```
+qn-claude-web/
+├── app.py                     # Flask backend + WebSocket handlers
+├── templates/
+│   ├── index.html             # Single-page app
+│   └── login.html             # Auth page
+├── static/
+│   ├── css/style.css          # Themed styling
+│   ├── js/app.js              # Client-side application
+│   ├── sw.js                  # Service worker (PWA)
+│   └── manifest.json          # PWA manifest
+├── .claude/                   # Claude Code project configuration
+│   ├── agents/                # Agent definitions
+│   ├── rules/                 # Language and project standards
+│   └── settings.json          # Permission and environment config
+├── vendor/                    # Vendored Python dependencies
+├── tests/                     # Unit and integration tests
+├── sessions/                  # Saved chat sessions (gitignored)
+├── config.json                # Runtime configuration (gitignored)
+├── build-installer.sh         # Installer generator with SHA-256 hashes
+├── build-release.sh           # Self-extracting installer builder
+└── qn-code-assistant.service  # systemd unit file
+```
+
+---
 
 ## Security
 
 | Control | Implementation |
 |---------|---------------|
-| **Authentication** | Password-based login with bcrypt hashing, multi-user support |
+| **Authentication** | bcrypt-hashed passwords, multi-user, RBAC |
 | **Rate Limiting** | 10 login attempts per 5 minutes per IP |
 | **Security Headers** | CSP, X-Frame-Options, X-Content-Type-Options, HSTS, Referrer-Policy |
-| **Cookie Security** | HttpOnly, SameSite=Lax, Secure flag (when SSL enabled) |
+| **Cookie Security** | HttpOnly, SameSite=Lax, Secure flag with SSL |
 | **XSS Prevention** | HTML sanitization, escaped output, Content Security Policy |
 | **Path Traversal** | Null byte rejection, symlink resolution, allowed-path enforcement |
-| **App Directory** | Excluded from file browser — protects config, source, sessions |
+| **App Directory** | Excluded from file browser — config, source, and session files cannot be accessed via the API |
 | **SSH Sanitization** | Hostname/username character filtering, port range validation |
+| **CSRF Protection** | SameSite cookies + origin checking on WebSocket connections |
 | **Message Limits** | Chat messages capped at 1MB |
 | **Thread Safety** | Lock-protected session storage and terminal registry |
-| **Version Hiding** | Server header stripped of framework/language identifiers |
+| **Version Hiding** | Server header reports `QN Code Assistant` — no framework or Python version exposed |
+| **systemd Hardening** | `NoNewPrivileges`, `PrivateTmp`, `ProtectSystem`, capability restrictions |
 | **Disconnect Handling** | 30-second grace period with browser correlation, orphan PTY cleanup |
+
+To report a security vulnerability, open a GitHub issue marked **[SECURITY]** or contact the maintainer directly.
+
+---
 
 ## Troubleshooting
 
@@ -273,7 +305,7 @@ lsof -ti:5001 | xargs kill -9
 **Claude command not found:**
 ```bash
 which claude
-# Add to PATH if needed:
+# Add to PATH if missing:
 export PATH="$PATH:/path/to/claude"
 ```
 
@@ -282,13 +314,23 @@ export PATH="$PATH:/path/to/claude"
 sudo journalctl -u qn-code-assistant -n 50
 ```
 
+**tmux sessions not persisting:**
+```bash
+tmux -V   # confirm tmux is installed
+which tmux
+```
+
+**SSL certificate errors in browser:**
+
+Self-signed certificates require a browser trust exception. For production use, configure a real certificate via `ssl_cert_path` and `ssl_key_path` in `config.json`.
+
+---
+
 ## Disclaimer
 
-This project is not affiliated with, endorsed by, or sponsored by Anthropic, PBC.
-"Claude" and "Claude Code" are trademarks of Anthropic, PBC.
-This is an independent, community-developed web interface that works with
-the Claude Code CLI tool. Use requires a valid Claude subscription and
-installed Claude Code CLI.
+This project is not affiliated with, endorsed by, or sponsored by Anthropic, PBC. "Claude" and "Claude Code" are trademarks of Anthropic, PBC. This is an independent, community-developed web interface that works with the Claude Code CLI. Use requires a valid Claude subscription and the Claude Code CLI installed locally.
+
+---
 
 ## License
 
