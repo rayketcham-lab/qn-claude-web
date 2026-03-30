@@ -6,5 +6,6 @@ backups/
 certs/
 usage.json
 config.json
+auth.json
 *.log
 qn-code-assistant-v*.sh

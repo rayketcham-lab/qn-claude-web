@@ -3389,3 +3389,384 @@ html, body {
     }
 }
 
+/* ============================================================
+   Mobile / Responsive — Issue #38
+   Targets: phones and small tablets (max-width: 768px)
+   ============================================================ */
+
+/* Visibility helpers */
+.mobile-only {
+    display: none;
+}
+
+.desktop-only {
+    display: initial;
+}
+
+/* Hamburger button (revealed on mobile) */
+#btn-hamburger {
+    width: 36px;
+    height: 36px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    border-radius: 6px;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    flex-shrink: 0;
+}
+
+#btn-hamburger:hover {
+    background: var(--border-color);
+}
+
+/* Sidebar overlay (dark backdrop when drawer is open) */
+.sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 99;
+    cursor: pointer;
+}
+
+.sidebar-overlay.visible {
+    display: block;
+}
+
+/* Touch shortcut bar */
+.touch-controls {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 200;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-color);
+    padding: 6px 4px;
+    gap: 4px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+}
+
+.touch-controls::-webkit-scrollbar {
+    display: none;
+}
+
+.touch-key {
+    min-width: 44px;
+    height: 44px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.7rem;
+    white-space: nowrap;
+    padding: 0 10px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+}
+
+.touch-key:active {
+    background: var(--border-color);
+    border-color: var(--claude-orange);
+}
+
+/* ---- Breakpoint: 768px ---- */
+@media (max-width: 768px) {
+    /* Show mobile-only elements */
+    .mobile-only {
+        display: initial;
+    }
+
+    /* Hide desktop-only elements */
+    .desktop-only {
+        display: none;
+    }
+
+    /* Hamburger: show as flex item */
+    #btn-hamburger {
+        display: flex;
+    }
+
+    /* Sidebar becomes a slide-out drawer */
+    #sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        width: 85vw;
+        max-width: 340px;
+        min-width: unset;
+        z-index: 100;
+        transform: translateX(-110%);
+        transition: transform 0.25s ease;
+        resize: none;
+        overflow-y: auto;
+    }
+
+    #sidebar.sidebar-open {
+        transform: translateX(0);
+    }
+
+    /* Main content fills full width */
+    #main-content {
+        width: 100%;
+    }
+
+    /* Terminal fills full width; larger font for readability */
+    #terminal-container {
+        width: 100%;
+    }
+
+    /* Buttons: ensure minimum 44x44px touch targets */
+    .btn-icon {
+        width: 44px;
+        height: 44px;
+    }
+
+    .btn-action {
+        min-height: 44px;
+        padding: 6px 12px;
+    }
+
+    .mode-tab,
+    .view-tab {
+        min-height: 44px;
+        padding: 10px 14px;
+    }
+
+    /* Settings: stack vertically */
+    .settings-tabs {
+        flex-direction: column;
+        overflow-x: visible;
+    }
+
+    .settings-tab {
+        width: 100%;
+        text-align: left;
+    }
+
+    .settings-content {
+        overflow-y: auto;
+    }
+
+    /* Options grid: single column */
+    .options-grid {
+        grid-template-columns: 1fr;
+    }
+
+    /* Chat input area: larger touch targets */
+    #chat-input {
+        font-size: 1rem;
+    }
+
+    #btn-send-chat {
+        min-height: 44px;
+    }
+
+    /* Terminal toolbar: compact on small screens */
+    .terminal-toolbar {
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    #terminal-project {
+        font-size: 0.8rem;
+        max-width: 60vw;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    /* Add bottom padding to terminal view so touch bar doesn't cover output */
+    #terminal-view.touch-bar-visible {
+        padding-bottom: 56px;
+    }
+
+    /* Touch shortcut bar: show on touch devices via JS */
+    .touch-controls {
+        display: flex;
+    }
+
+    /* Modal overlays: full screen on mobile */
+    .settings-overlay-inner,
+    .remote-wizard-content {
+        width: 100vw;
+        max-width: 100vw;
+        height: 100vh;
+        max-height: 100vh;
+        border-radius: 0;
+    }
+}
+
+/* ============== Utility / Externalized inline styles ============== */
+
+/* Visibility */
+.visibility-hidden { visibility: hidden; }
+.overflow-y-auto { overflow-y: auto; }
+.text-center { text-align: center; }
+.flex-1 { flex: 1; }
+
+/* Spacing utilities */
+.mt-8 { margin-top: 8px; }
+.mt-12 { margin-top: 12px; }
+.mb-24 { margin-bottom: 24px; }
+
+/* Flex row helpers */
+.flex-row-gap-8 {
+    display: flex;
+    gap: 8px;
+}
+
+.flex-row-gap-12 {
+    display: flex;
+    gap: 12px;
+}
+
+.flex-row-gap-mt {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+/* Settings panel helpers */
+.settings-section-heading {
+    margin: 16px 0 8px;
+    font-size: 0.9rem;
+}
+
+.settings-section-heading-mb {
+    margin-bottom: 12px;
+    font-size: 0.9rem;
+}
+
+.settings-hint {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+.settings-hint-mb {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+}
+
+.settings-status-text {
+    margin-bottom: 12px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.settings-intro-text {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin: 0 0 12px;
+}
+
+/* Inline checkbox — used inside <label> text */
+.checkbox-inline {
+    width: auto;
+    margin-right: 6px;
+}
+
+/* Button width helpers */
+.btn-save-full {
+    margin-top: 12px;
+    width: 100%;
+}
+
+.btn-sm-full {
+    width: 100%;
+    margin-top: 8px;
+}
+
+/* Modal size variants */
+.modal-sm { width: 450px; }
+.modal-md {
+    width: 560px;
+    max-height: 80vh;
+}
+
+/* Loading / empty state placeholder */
+.loading-placeholder {
+    padding: 20px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+/* Sentinel badge inside agent modal count */
+.badge-sentinel {
+    margin-left: 6px;
+    background: var(--claude-orange);
+    color: #fff;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 0.7rem;
+}
+
+/* Agents section header row inside settings panel */
+.agents-custom-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.agents-custom-title {
+    font-size: 0.9rem;
+    margin: 0;
+    color: var(--text-secondary);
+}
+
+/* "No agents selected" hint inside options panel */
+.agents-empty-hint {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+}
+
+/* Remote wizard — field width for Port input */
+.field-width-port { width: 100px; }
+
+/* Inline note span inside field label (e.g. password disclaimer) */
+.field-label-note {
+    color: var(--text-secondary);
+    font-weight: normal;
+    font-size: 0.75rem;
+}
+
+/* Remote wizard manual-copy instructions paragraph */
+.rw-manual-instructions {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin: 12px 0 8px;
+}
+
+/* Refresh button inside sidebar section label */
+#btn-refresh-projects {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.85rem;
+    padding: 0 4px;
+    vertical-align: middle;
+}
+
+/* Onboarding step title centered on completion screen */
+.ob-step-title-center { text-align: center; }
+

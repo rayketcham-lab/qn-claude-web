@@ -91,12 +91,13 @@ def _disable_auth():
     app_module.AUTH['users'] = []
 
 
-def _login(client, username='testadmin', password='testpass123'):
-    return client.post(
-        '/login',
-        data=json.dumps({'username': username, 'password': password}),
-        content_type='application/json',
-    )
+def _login(client, username='testadmin', role='admin'):
+    """Set session directly — avoids rate limit issues in test suites."""
+    with client.session_transaction() as sess:
+        sess['authenticated'] = True
+        sess['username'] = username
+        sess['role'] = role
+        sess['login_time'] = datetime.utcnow().isoformat()
 
 
 def _make_empty_usage():
@@ -383,7 +384,7 @@ class TestApiUsageEndpoint(unittest.TestCase):
             json.dump(usage, f)
 
         with flask_app.test_client() as client:
-            _login(client, username='regularuser')
+            _login(client, username='regularuser', role='user')
             resp = client.get('/api/usage')
 
         self.assertEqual(resp.status_code, 200)
@@ -534,7 +535,7 @@ class TestApiUsageSummaryEndpoint(unittest.TestCase):
             json.dump(usage, f)
 
         with flask_app.test_client() as client:
-            _login(client, username='regularuser')
+            _login(client, username='regularuser', role='user')
             resp = client.get('/api/usage/summary')
 
         self.assertEqual(resp.status_code, 200)

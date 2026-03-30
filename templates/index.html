@@ -40,12 +40,27 @@
         <span>Connection lost. Reconnecting...</span>
     </div>
 
+    <!-- Sidebar overlay (mobile backdrop) -->
+    <div id="sidebar-overlay" class="sidebar-overlay"></div>
+
+    <!-- Touch shortcut bar (shown only on touch devices via JS) -->
+    <div id="touch-controls" class="touch-controls" aria-label="Terminal shortcuts" role="toolbar">
+        <button class="touch-key" data-key="ctrl-c" title="Ctrl+C">Ctrl+C</button>
+        <button class="touch-key" data-key="ctrl-d" title="Ctrl+D">Ctrl+D</button>
+        <button class="touch-key" data-key="tab"    title="Tab">Tab</button>
+        <button class="touch-key" data-key="enter"  title="Enter">Enter</button>
+        <button class="touch-key" data-key="escape" title="Escape">Esc</button>
+        <button class="touch-key" data-key="up"     title="Up Arrow">&uarr;</button>
+        <button class="touch-key" data-key="down"   title="Down Arrow">&darr;</button>
+    </div>
+
     <div id="app">
         <!-- Sidebar -->
         <aside id="sidebar">
             <div class="sidebar-header">
                 <h1>QN Code Assistant</h1>
                 <div class="sidebar-header-actions">
+                    <button id="btn-hamburger" class="btn-icon mobile-only" title="Close menu" aria-label="Close sidebar" aria-expanded="true">&#x2715;</button>
                     <button id="btn-logout" class="btn-icon" title="Logout">&#x23FB;</button>
                     <button id="btn-settings" class="btn-icon" title="Settings">&#9881;</button>
                     <span class="status-indicator" id="connection-status"></span>
@@ -79,7 +94,7 @@
                         <div class="section-label">Remote Hosts</div>
                         <div id="remote-hosts-list"></div>
                     </div>
-                    <div class="section-label" id="projects-section-label">Local Projects <button id="btn-refresh-projects" title="Refresh projects" style="background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:0.85rem;padding:0 4px;vertical-align:middle;">&#8635;</button></div>
+                    <div class="section-label" id="projects-section-label">Local Projects <button id="btn-refresh-projects" title="Refresh projects">&#8635;</button></div>
                     <div id="projects-list"></div>
                 </div>
             </div>
@@ -90,6 +105,7 @@
         <main id="main-content">
             <!-- View Tabs -->
             <div class="view-tabs">
+                <button id="btn-open-sidebar" class="btn-icon mobile-only view-tab-hamburger" title="Open menu" aria-label="Open sidebar" aria-expanded="false">&#9776;</button>
                 <button class="view-tab active" data-view="terminal">Terminal</button>
                 <button class="view-tab" data-view="chat">Chat</button>
                 <button class="view-tab" data-view="files">Files</button>
@@ -104,7 +120,7 @@
                         <span id="git-status-badge" class="hidden"></span>
                     </div>
                     <div class="terminal-actions">
-                        <button id="btn-init-wizard" class="btn-action" title="Deploy CLAUDE.md to this project" style="display:none">Deploy CLAUDE.md</button>
+                        <button id="btn-init-wizard" class="btn-action hidden" title="Deploy CLAUDE.md to this project">Deploy CLAUDE.md</button>
                         <button id="btn-compact" class="btn-action" title="Compact Context">Compact</button>
                         <button id="btn-kill-terminal" class="btn-action btn-action-danger" title="Kill Terminal">Kill</button>
                     </div>
@@ -186,7 +202,7 @@
                                     <label>Task Prompt</label>
                                     <p class="options-desc">The initial task Claude will receive when it starts. Pre-populated from the /go command — edit to customize.</p>
                                     <textarea id="flag-autonomous-task" rows="6" maxlength="10000" placeholder="Describe the task for Claude to work on autonomously..."></textarea>
-                                    <div class="options-field" style="margin-top:12px;">
+                                    <div class="options-field mt-12">
                                         <label class="options-checkbox">
                                             <input type="checkbox" id="flag-auto-restart" checked>
                                             Auto-restart on exit
@@ -355,9 +371,9 @@
                                 </div>
                                 <div id="sidebar-agents-summary" class="options-agents-panel hidden">
                                     <div id="sidebar-agents-list" class="options-agents-list">
-                                        <span style="color:var(--text-secondary);font-size:0.8rem;">No agents selected</span>
+                                        <span class="agents-empty-hint">No agents selected</span>
                                     </div>
-                                    <button class="btn-sm" id="btn-open-agents-modal" style="width:100%;margin-top:8px;">Change Agents</button>
+                                    <button class="btn-sm btn-sm-full" id="btn-open-agents-modal">Change Agents</button>
                                 </div>
                                 <div class="options-field">
                                     <label>Additional Directories</label>
@@ -426,21 +442,21 @@
                             <option value="light">Light</option>
                         </select>
                     </div>
-                    <h3 style="margin: 16px 0 8px; font-size: 0.9rem;">Directory Browsing</h3>
+                    <h3 class="settings-section-heading">Directory Browsing</h3>
                     <div class="settings-field">
                         <label>Allowed Paths (comma-separated)</label>
                         <input type="text" id="setting-allowed-paths" placeholder="/opt" value="/opt">
-                        <div style="font-size:0.75rem; color:var(--text-secondary); margin-top:2px;">Restrict project browsing to these root paths</div>
+                        <div class="settings-hint">Restrict project browsing to these root paths</div>
                     </div>
                     <div class="settings-field">
-                        <label><input type="checkbox" id="setting-allow-full-browsing" style="width:auto; margin-right:6px;">Allow full filesystem browsing (unrestricted)</label>
+                        <label><input type="checkbox" id="setting-allow-full-browsing" class="checkbox-inline">Allow full filesystem browsing (unrestricted)</label>
                     </div>
                     <button class="btn-save" id="btn-save-general">Save</button>
                 </div>
                 <!-- Auth & SSL -->
                 <div id="settings-auth" class="settings-panel">
-                    <h3 style="margin-bottom:12px; font-size:0.9rem;">Authentication</h3>
-                    <div id="auth-status-display" style="margin-bottom:12px; font-size:0.8rem; color:var(--text-secondary);"></div>
+                    <h3 class="settings-section-heading-mb">Authentication</h3>
+                    <div id="auth-status-display" class="settings-status-text"></div>
                     <div class="settings-field">
                         <label>Username</label>
                         <input type="text" id="setting-auth-username" placeholder="admin">
@@ -449,11 +465,11 @@
                         <label>New Password</label>
                         <input type="password" id="setting-auth-password" placeholder="Leave blank to keep current">
                     </div>
-                    <button class="btn-save" id="btn-save-auth" style="margin-bottom:24px;">Save Auth</button>
+                    <button class="btn-save mb-24" id="btn-save-auth">Save Auth</button>
 
-                    <h3 style="margin-bottom:12px; font-size:0.9rem;">HTTPS / SSL</h3>
+                    <h3 class="settings-section-heading-mb">HTTPS / SSL</h3>
                     <div class="settings-field">
-                        <label><input type="checkbox" id="setting-ssl-enabled" style="width:auto; margin-right:6px;">Enable HTTPS</label>
+                        <label><input type="checkbox" id="setting-ssl-enabled" class="checkbox-inline">Enable HTTPS</label>
                     </div>
                     <div class="settings-field">
                         <label>SSL Certificate Path (blank = auto-generate self-signed)</label>
@@ -463,13 +479,13 @@
                         <label>SSL Key Path</label>
                         <input type="text" id="setting-ssl-key" placeholder="/path/to/key.pem">
                     </div>
-                    <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:12px;">Server restart required after changing SSL settings.</div>
+                    <div class="settings-hint-mb">Server restart required after changing SSL settings.</div>
                     <button class="btn-save" id="btn-save-ssl">Save SSL</button>
                 </div>
                 <!-- Favorites -->
                 <div id="settings-favorites" class="settings-panel">
                     <div id="favorites-settings-list"></div>
-                    <div class="settings-add-form" id="add-favorite-form" style="display:none">
+                    <div class="settings-add-form hidden" id="add-favorite-form">
                         <div class="settings-field">
                             <label>Name</label>
                             <input type="text" id="fav-name" placeholder="My Project">
@@ -489,17 +505,17 @@
                             <button class="btn-sm" id="btn-cancel-favorite">Cancel</button>
                         </div>
                     </div>
-                    <button class="btn-sm" id="btn-add-favorite" style="margin-top:8px">+ Add Favorite</button>
+                    <button class="btn-sm mt-8" id="btn-add-favorite">+ Add Favorite</button>
                 </div>
                 <!-- Remote Hosts -->
                 <div id="settings-remotes" class="settings-panel">
                     <div id="remotes-settings-list"></div>
-                    <button class="btn-sm" id="btn-add-remote" style="margin-top:8px">+ Add Remote Host</button>
+                    <button class="btn-sm mt-8" id="btn-add-remote">+ Add Remote Host</button>
                 </div>
                 <!-- Users -->
                 <div id="settings-users" class="settings-panel">
                     <div id="users-settings-list"></div>
-                    <div class="settings-add-form" id="add-user-form" style="display:none">
+                    <div class="settings-add-form hidden" id="add-user-form">
                         <div class="settings-field">
                             <label>Username</label>
                             <input type="text" id="new-user-username" placeholder="username">
@@ -520,21 +536,21 @@
                             <button class="btn-sm" id="btn-cancel-user">Cancel</button>
                         </div>
                     </div>
-                    <button class="btn-sm" id="btn-add-user" style="margin-top:8px">+ Add User</button>
+                    <button class="btn-sm mt-8" id="btn-add-user">+ Add User</button>
                 </div>
 
                 <!-- Agents -->
                 <div id="settings-agents" class="settings-panel">
-                    <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 0 0 12px;">
+                    <p class="settings-intro-text">
                         Create custom agents (max 2). Select predefined agents in the sidebar under Advanced Options &rarr; Agent Teams.
                     </p>
                     <div class="agents-custom-section">
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                            <h3 style="font-size:0.9rem;margin:0;color:var(--text-secondary);">Custom Agents</h3>
+                        <div class="agents-custom-header">
+                            <h3 class="agents-custom-title">Custom Agents</h3>
                             <button class="btn-sm" id="btn-add-custom-agent">+ Create</button>
                         </div>
                         <div id="custom-agents-list"></div>
-                        <div class="settings-add-form" id="add-custom-agent-form" style="display:none">
+                        <div class="settings-add-form hidden" id="add-custom-agent-form">
                             <div class="settings-field">
                                 <label>Name</label>
                                 <input type="text" id="custom-agent-name" placeholder="My Custom Agent" maxlength="50">
@@ -553,7 +569,7 @@
                             </div>
                         </div>
                     </div>
-                    <button class="btn-sm success" id="btn-save-agents" style="margin-top:12px;width:100%;">Save Custom Agents</button>
+                    <button class="btn-sm success btn-save-full" id="btn-save-agents">Save Custom Agents</button>
                 </div>
             </div>
         </div>
@@ -561,7 +577,7 @@
 
     <!-- Keyboard Shortcuts Help -->
     <div id="shortcuts-overlay" class="settings-overlay hidden">
-        <div class="settings-modal" style="width:450px">
+        <div class="settings-modal modal-sm">
             <div class="settings-header">
                 <h2>Keyboard Shortcuts</h2>
                 <button class="settings-close" id="shortcuts-close">&times;</button>
@@ -586,13 +602,13 @@
 
     <!-- Changelog Modal -->
     <div id="changelog-overlay" class="settings-overlay hidden">
-        <div class="settings-modal" style="width:560px;max-height:80vh;">
+        <div class="settings-modal modal-md">
             <div class="settings-header">
                 <h2>Changelog</h2>
                 <button class="settings-close" id="changelog-close">&times;</button>
             </div>
-            <div class="settings-body" id="changelog-body" style="overflow-y:auto;">
-                <div style="color:var(--text-secondary);padding:20px;text-align:center;">Loading...</div>
+            <div class="settings-body overflow-y-auto" id="changelog-body">
+                <div class="loading-placeholder">Loading...</div>
             </div>
         </div>
     </div>
@@ -608,7 +624,7 @@
                 <div class="agents-modal-top">
                     <div class="agents-modal-count">
                         <span id="agents-modal-count">0</span>/5 selected
-                        <span class="badge" style="margin-left:6px;background:var(--claude-orange);color:#fff;padding:2px 6px;border-radius:3px;font-size:0.7rem;">+ Sentinel</span>
+                        <span class="badge badge-sentinel">+ Sentinel</span>
                     </div>
                     <div class="agents-modal-filter" id="agents-modal-filter">
                         <button class="btn-sm active" data-category="all">All</button>
@@ -618,8 +634,8 @@
                     </div>
                 </div>
                 <div class="agents-modal-grid" id="agents-modal-grid"></div>
-                <div style="display:flex;gap:8px;margin-top:12px;">
-                    <button class="btn-sm success" id="btn-save-agents-modal" style="flex:1;">Save &amp; Close</button>
+                <div class="flex-row-gap-mt">
+                    <button class="btn-sm success flex-1" id="btn-save-agents-modal">Save &amp; Close</button>
                 </div>
             </div>
         </div>

@@ -276,6 +276,11 @@ def load_config():
         'custom_agents': [],
         'multi_tenant': False,
         'default_engine': 'claude',
+        'tunnel_enabled': False,
+        'tunnel_url': None,
+        'team_mode': False,
+        'user_quotas': {'daily': 0, 'weekly': 0},
+        'role_quotas': {},
     }
     if CONFIG_FILE.exists():
         try:
@@ -614,7 +619,7 @@ def record_token_usage(input_tokens: int, output_tokens: int, username: str = ''
         usage['total']['input_tokens'] += input_tokens
         usage['total']['output_tokens'] += output_tokens
 
-        # --- per-user bucket ---
+        # --- per-user bucket (lifetime + per-day + per-week) ---
         if username:
             usage.setdefault('users', {})
             user_stats = usage['users'].setdefault(
@@ -623,6 +628,18 @@ def record_token_usage(input_tokens: int, output_tokens: int, username: str = ''
             )
             user_stats['input_tokens'] += input_tokens
             user_stats['output_tokens'] += output_tokens
+
+            # Per-user daily bucket for quota enforcement
+            user_stats.setdefault('daily', {})
+            u_day = user_stats['daily'].setdefault(day_key, {'input_tokens': 0, 'output_tokens': 0})
+            u_day['input_tokens'] += input_tokens
+            u_day['output_tokens'] += output_tokens
+
+            # Per-user weekly bucket for quota enforcement
+            user_stats.setdefault('weekly', {})
+            u_week = user_stats['weekly'].setdefault(week_key, {'input_tokens': 0, 'output_tokens': 0})
+            u_week['input_tokens'] += input_tokens
+            u_week['output_tokens'] += output_tokens
 
         save_usage(usage)
     except Exception as ue:
@@ -2391,6 +2408,7 @@ def new_chat_session():
     data = request.json or {}
     session_id = str(uuid.uuid4())
 
+    _creator = session.get('username', '')
     with chat_sessions_lock:
         chat_sessions[session_id] = {
             'id': session_id,
@@ -2400,7 +2418,9 @@ def new_chat_session():
             'remote_host_id': data.get('remote_host_id'),
             'messages': [],
             'created': datetime.now().isoformat(),
-            'status': 'ready'
+            'status': 'ready',
+            'visibility': 'private',
+            'owner': _creator,
         }
 
     # Save to disk
@@ -2436,10 +2456,62 @@ def get_session(session_id):
     return jsonify({'error': 'Session not found'}), 404
 
 
+@app.route('/api/session/<session_id>/share', methods=['POST'])
+@login_required
+@csrf_protect
+def share_session(session_id):
+    """Change the visibility of a chat session (owner or admin only).
+
+    Body: {"visibility": "private" | "team" | "public"}
+    Team mode must be enabled to set 'team' visibility.
+    """
+    if session_id not in chat_sessions:
+        load_session(session_id)
+    if session_id not in chat_sessions:
+        return jsonify({'error': 'Session not found'}), 404
+
+    data = request.json or {}
+    new_visibility = data.get('visibility', '')
+    allowed_values = ('private', 'team', 'public')
+    if new_visibility not in allowed_values:
+        return jsonify({'error': f'visibility must be one of: {", ".join(allowed_values)}'}), 400
+
+    if new_visibility == 'team' and not is_team_mode():
+        return jsonify({'error': 'Team mode is not enabled'}), 400
+
+    current_user = get_current_user()
+    username = (current_user or {}).get('username', '')
+    role = (current_user or {}).get('role', 'user')
+
+    sess = chat_sessions[session_id]
+    owner = sess.get('owner', '')
+    if owner and owner != username and role != 'admin':
+        return jsonify({'error': 'Only the session owner or an admin can change visibility'}), 403
+
+    with chat_sessions_lock:
+        chat_sessions[session_id]['visibility'] = new_visibility
+    save_session(session_id)
+
+    audit_log('session_share', username, ip=request.remote_addr or '',
+              detail={'session_id': session_id, 'visibility': new_visibility})
+    return jsonify({'success': True, 'visibility': new_visibility})
+
+
 @app.route('/api/sessions')
 @login_required
 def list_sessions():
-    """List all saved sessions"""
+    """List saved sessions visible to the current user.
+
+    In team mode, sessions with visibility 'team' or 'public' are visible to
+    all authenticated users (read-only for non-owners). Private sessions are
+    only visible to their owner (or admins).
+    When team mode is disabled, all sessions are returned (legacy behaviour).
+    """
+    current_user = get_current_user()
+    username = (current_user or {}).get('username', '')
+    role = (current_user or {}).get('role', 'user')
+    team_mode_on = is_team_mode()
+
     sessions = []
     sessions_dir = CONFIG['sessions_dir']
 
@@ -2448,12 +2520,20 @@ def list_sessions():
             try:
                 with open(f) as fp:
                     data = json.load(fp)
-                    sessions.append({
-                        'id': data['id'],
-                        'project_name': data.get('project_name', 'Unknown'),
-                        'created': data.get('created', ''),
-                        'message_count': len(data.get('messages', []))
-                    })
+
+                if team_mode_on and not _session_visible_to(data, username, role):
+                    continue
+
+                owner = data.get('owner', '')
+                sessions.append({
+                    'id': data['id'],
+                    'project_name': data.get('project_name', 'Unknown'),
+                    'created': data.get('created', ''),
+                    'message_count': len(data.get('messages', [])),
+                    'visibility': data.get('visibility', 'private'),
+                    'owner': owner,
+                    'is_mine': (not owner) or (owner == username),
+                })
             except (json.JSONDecodeError, OSError, KeyError):
                 pass
 
@@ -3880,6 +3960,124 @@ def admin_required(f):
     return decorated
 
 
+# ============== Team Mode Helpers ==============
+
+def is_team_mode() -> bool:
+    """Return True when team_mode is enabled in config."""
+    return bool(CONFIG.get('team_mode', False))
+
+
+def _is_viewer(user: dict) -> bool:
+    """Return True if *user* has the 'viewer' role."""
+    return (user or {}).get('role') == 'viewer'
+
+
+def viewer_not_allowed(f):
+    """Decorator: reject viewers (role='viewer') on write/terminal endpoints."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not is_team_mode():
+            return f(*args, **kwargs)
+        user = get_current_user()
+        if user and _is_viewer(user):
+            return jsonify({'error': 'Viewers do not have access to this feature'}), 403
+        return f(*args, **kwargs)
+    return decorated
+
+
+def _get_quota_for_user(username: str) -> dict:
+    """Return effective quota limits for *username*.
+
+    Priority: per-user quota > per-role quota > global user_quotas.
+    Returns dict with keys 'daily' and 'weekly' (0 = no limit).
+    """
+    users = AUTH.get('users', [])
+    user_rec = next((u for u in users if u.get('username') == username), None)
+
+    # Per-user quota overrides everything
+    if user_rec and user_rec.get('quota'):
+        q = user_rec['quota']
+        return {
+            'daily': int(q.get('daily', 0)),
+            'weekly': int(q.get('weekly', 0)),
+        }
+
+    # Per-role quota
+    role = (user_rec or {}).get('role', 'user')
+    role_quotas = CONFIG.get('role_quotas', {})
+    if role in role_quotas:
+        q = role_quotas[role]
+        return {
+            'daily': int(q.get('daily', 0)),
+            'weekly': int(q.get('weekly', 0)),
+        }
+
+    # Global default
+    global_q = CONFIG.get('user_quotas', {'daily': 0, 'weekly': 0})
+    return {
+        'daily': int(global_q.get('daily', 0)),
+        'weekly': int(global_q.get('weekly', 0)),
+    }
+
+
+def _get_user_token_counts(username: str) -> dict:
+    """Return today's and this week's token totals for *username*."""
+    usage = load_usage()
+    day_key = get_day_key()
+    week_key = get_week_key()
+
+    # Per-user daily/weekly buckets (keyed under users.<name>.daily / .weekly)
+    user_data = usage.get('users', {}).get(username, {})
+    daily_bucket = user_data.get('daily', {}).get(day_key, {'input_tokens': 0, 'output_tokens': 0})
+    weekly_bucket = user_data.get('weekly', {}).get(week_key, {'input_tokens': 0, 'output_tokens': 0})
+
+    daily_total = daily_bucket.get('input_tokens', 0) + daily_bucket.get('output_tokens', 0)
+    weekly_total = weekly_bucket.get('input_tokens', 0) + weekly_bucket.get('output_tokens', 0)
+    return {'daily': daily_total, 'weekly': weekly_total}
+
+
+def _check_quota(username: str) -> tuple:
+    """Check whether *username* is within quota limits.
+
+    Returns (allowed: bool, reason: str).
+    When team_mode is disabled, always returns (True, '').
+    When quota limit is 0 it means no limit is set.
+    """
+    if not is_team_mode():
+        return True, ''
+    if not username:
+        return True, ''
+
+    quota = _get_quota_for_user(username)
+    counts = _get_user_token_counts(username)
+
+    if quota['daily'] > 0 and counts['daily'] >= quota['daily']:
+        return False, f"Daily token quota exceeded ({counts['daily']}/{quota['daily']})"
+    if quota['weekly'] > 0 and counts['weekly'] >= quota['weekly']:
+        return False, f"Weekly token quota exceeded ({counts['weekly']}/{quota['weekly']})"
+    return True, ''
+
+
+def _session_visible_to(session_data: dict, username: str, role: str) -> bool:
+    """Return True if *username*/*role* can see *session_data*.
+
+    Visibility rules:
+    - 'private': only the owner can see it
+    - 'team': any authenticated user can see it (read-only for non-owners)
+    - 'public': any authenticated user can see it
+    When team_mode is disabled, only 'private' and 'public' are active
+    (no role distinction; all sessions visible to all).
+    """
+    visibility = session_data.get('visibility', 'private')
+    owner = session_data.get('owner', '')
+
+    if visibility == 'private':
+        return (not owner) or (owner == username) or (role == 'admin')
+    if visibility in ('team', 'public'):
+        return True
+    return (not owner) or (owner == username) or (role == 'admin')
+
+
 @app.route('/api/users')
 @login_required
 def api_list_users():
@@ -3912,8 +4110,8 @@ def api_create_user():
         return jsonify({'error': 'Username and password required'}), 400
     if len(password) < 8:
         return jsonify({'error': 'Password must be at least 8 characters'}), 400
-    if role not in ('admin', 'user'):
-        return jsonify({'error': 'Role must be admin or user'}), 400
+    if role not in ('admin', 'user', 'viewer'):
+        return jsonify({'error': 'Role must be admin, user, or viewer'}), 400
 
     users = AUTH.get('users', [])
     if any(u['username'] == username for u in users):
@@ -3986,6 +4184,117 @@ def api_whoami():
     if user:
         return jsonify({'username': user['username'], 'role': user.get('role', 'admin')})
     return jsonify({'username': 'anonymous', 'role': 'admin'})
+
+
+@app.route('/api/user/role')
+@login_required
+def api_user_role():
+    """Return the current user's role."""
+    user = get_current_user()
+    if user:
+        return jsonify({'username': user.get('username', ''), 'role': user.get('role', 'user')})
+    return jsonify({'username': 'anonymous', 'role': 'user'})
+
+
+@app.route('/api/user/quota')
+@login_required
+def api_user_quota():
+    """Return the current user's quota limits and current usage.
+
+    Returns:
+      quota   — configured limits (daily, weekly; 0 = no limit)
+      usage   — current token totals for today and this week
+      allowed — whether the user is currently within quota
+    """
+    user = get_current_user()
+    username = (user or {}).get('username', '')
+    quota = _get_quota_for_user(username)
+    counts = _get_user_token_counts(username)
+    allowed, reason = _check_quota(username)
+    return jsonify({
+        'quota': quota,
+        'usage': counts,
+        'allowed': allowed,
+        'reason': reason,
+        'team_mode': is_team_mode(),
+    })
+
+
+@app.route('/api/admin/quotas', methods=['GET'])
+@login_required
+@admin_required
+def api_admin_get_quotas():
+    """Return quota configuration for all users and roles (admin only)."""
+    users = AUTH.get('users', [])
+    user_quotas = [
+        {
+            'username': u['username'],
+            'role': u.get('role', 'user'),
+            'quota': u.get('quota', {}),
+        }
+        for u in users
+    ]
+    return jsonify({
+        'user_quotas': user_quotas,
+        'role_quotas': CONFIG.get('role_quotas', {}),
+        'default_quotas': CONFIG.get('user_quotas', {'daily': 0, 'weekly': 0}),
+    })
+
+
+@app.route('/api/admin/quotas', methods=['POST'])
+@login_required
+@admin_required
+@csrf_protect
+def api_admin_set_quotas():
+    """Set quota limits (admin only).
+
+    Body options (all optional, each independently settable):
+      default_quotas  — {daily: int, weekly: int}  — applies to all users without override
+      role_quotas     — {rolename: {daily: int, weekly: int}}
+      user_quota      — {username: str, daily: int, weekly: int}
+    """
+    data = request.json or {}
+
+    if 'default_quotas' in data:
+        q = data['default_quotas']
+        CONFIG['user_quotas'] = {
+            'daily': max(0, int(q.get('daily', 0))),
+            'weekly': max(0, int(q.get('weekly', 0))),
+        }
+        save_config(CONFIG)
+
+    if 'role_quotas' in data:
+        rq = data['role_quotas']
+        if not isinstance(rq, dict):
+            return jsonify({'error': 'role_quotas must be an object'}), 400
+        role_quotas = {}
+        for role_name, limits in rq.items():
+            role_quotas[role_name] = {
+                'daily': max(0, int(limits.get('daily', 0))),
+                'weekly': max(0, int(limits.get('weekly', 0))),
+            }
+        CONFIG['role_quotas'] = role_quotas
+        save_config(CONFIG)
+
+    if 'user_quota' in data:
+        uq = data['user_quota']
+        target_username = uq.get('username', '')
+        if not target_username:
+            return jsonify({'error': 'username required in user_quota'}), 400
+        users = AUTH.get('users', [])
+        target = next((u for u in users if u.get('username') == target_username), None)
+        if not target:
+            return jsonify({'error': f'User not found: {target_username}'}), 404
+        target['quota'] = {
+            'daily': max(0, int(uq.get('daily', 0))),
+            'weekly': max(0, int(uq.get('weekly', 0))),
+        }
+        AUTH['users'] = users
+        save_auth(AUTH)
+
+    audit_log('quota_change', session.get('username', ''), ip=request.remote_addr or '',
+              detail={'keys': list(data.keys())})
+    return jsonify({'success': True})
 
 
 # ---- Account Lockout Admin Endpoints ----
@@ -4888,6 +5197,179 @@ def ensure_ssl_certs():
     logger.info("Certificate generated: %s", cert_path)
 
     return str(cert_path), str(key_path)
+
+
+# ============== Cloudflare Tunnel ==============
+
+import shutil as _shutil
+
+# Tunnel state — protected by _tunnel_lock
+_tunnel_lock = threading.Lock()
+_tunnel_process = None   # subprocess.Popen or None
+_tunnel_url = None       # str or None (populated when tunnel starts)
+
+
+def _detect_cloudflared():
+    """Return the path to the cloudflared binary, or None if not installed."""
+    return _shutil.which('cloudflared')
+
+
+def _start_tunnel(port):
+    """Launch cloudflared tunnel in the background and capture the assigned URL.
+
+    Blocks for up to 30 seconds waiting for cloudflared to print the tunnel
+    URL to stderr.  Returns the URL string on success, raises RuntimeError on
+    failure.
+    """
+    global _tunnel_process, _tunnel_url
+
+    binary = _detect_cloudflared()
+    if not binary:
+        raise RuntimeError('cloudflared is not installed')
+
+    with _tunnel_lock:
+        if _tunnel_process is not None and _tunnel_process.poll() is None:
+            # Already running — return current URL
+            return _tunnel_url
+
+        try:
+            proc = subprocess.Popen(
+                [binary, 'tunnel', '--url', f'http://localhost:{port}'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,  # merge stderr into stdout
+                text=True,
+            )
+        except OSError as exc:
+            raise RuntimeError(f'Failed to start cloudflared: {exc}') from exc
+
+        # cloudflared prints the URL to stderr with a line like:
+        #   INF ... | https://some-name.trycloudflare.com
+        url_pattern = re.compile(r'https://[a-zA-Z0-9\-]+\.trycloudflare\.com')
+        url = None
+        deadline = time.monotonic() + 30.0
+
+        while time.monotonic() < deadline:
+            line = proc.stdout.readline()
+            if not line:
+                # Process exited unexpectedly
+                break
+            match = url_pattern.search(line)
+            if match:
+                url = match.group(0)
+                break
+
+        if url is None:
+            proc.kill()
+            proc.wait()
+            raise RuntimeError('Timed out waiting for cloudflared tunnel URL')
+
+        _tunnel_process = proc
+        _tunnel_url = url
+        logger.info("Cloudflare tunnel started: %s -> http://localhost:%s", url, port)
+        return url
+
+
+def _stop_tunnel():
+    """Terminate the running cloudflared process, if any."""
+    global _tunnel_process, _tunnel_url
+
+    with _tunnel_lock:
+        if _tunnel_process is None:
+            return
+        proc = _tunnel_process
+        _tunnel_process = None
+        _tunnel_url = None
+
+    try:
+        proc.terminate()
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+    except OSError:
+        pass
+    logger.info("Cloudflare tunnel stopped")
+
+
+def _tunnel_status():
+    """Return a dict describing the current tunnel state.
+
+    Keys:
+        available (bool): cloudflared binary is installed.
+        running   (bool): tunnel process is active.
+        url       (str|None): tunnel URL when running, else None.
+    """
+    available = _detect_cloudflared() is not None
+    with _tunnel_lock:
+        running = _tunnel_process is not None and _tunnel_process.poll() is None
+        url = _tunnel_url if running else None
+    return {'available': available, 'running': running, 'url': url}
+
+
+# Register tunnel shutdown in the existing atexit cleanup
+def _tunnel_atexit():
+    if _tunnel_process is not None:
+        _stop_tunnel()
+
+
+atexit.register(_tunnel_atexit)
+
+
+@app.route('/api/tunnel/status')
+@login_required
+def api_tunnel_status():
+    """Get Cloudflare tunnel status.
+
+    Returns:
+        available: cloudflared binary is present on this host.
+        running: tunnel is currently active.
+        url: public URL when running, null otherwise.
+    """
+    return jsonify(_tunnel_status())
+
+
+@app.route('/api/tunnel/start', methods=['POST'])
+@login_required
+@admin_required
+@csrf_protect
+def api_tunnel_start():
+    """Start a Cloudflare tunnel (admin only).
+
+    Uses the configured server port.  Returns the assigned public URL.
+    """
+    status = _tunnel_status()
+    if not status['available']:
+        return jsonify({'error': 'cloudflared is not installed on this server'}), 503
+
+    if status['running']:
+        return jsonify({'running': True, 'url': status['url']})
+
+    port = CONFIG.get('port', 5001)
+    try:
+        url = _start_tunnel(port)
+    except RuntimeError as exc:
+        logger.error("Tunnel start failed: %s", exc)
+        return jsonify({'error': str(exc)}), 500
+
+    audit_log('tunnel_start', session.get('username', ''), request.remote_addr,
+              result='success', detail={'url': url})
+    return jsonify({'running': True, 'url': url})
+
+
+@app.route('/api/tunnel/stop', methods=['POST'])
+@login_required
+@admin_required
+@csrf_protect
+def api_tunnel_stop():
+    """Stop the running Cloudflare tunnel (admin only)."""
+    status = _tunnel_status()
+    if not status['running']:
+        return jsonify({'running': False, 'url': None})
+
+    _stop_tunnel()
+    audit_log('tunnel_stop', session.get('username', ''), request.remote_addr,
+              result='success')
+    return jsonify({'running': False, 'url': None})
 
 
 # ============== Main ==============
