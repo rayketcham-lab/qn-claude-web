@@ -1,0 +1,87 @@
+/* QN Code Assistant - Login Page Styles */
+
+body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    background: var(--bg-primary);
+}
+
+.login-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 32px;
+    width: 380px;
+    max-width: 90vw;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.login-card h1 {
+    color: var(--claude-orange);
+    font-size: 1.4rem;
+    margin-bottom: 4px;
+}
+
+.login-card .subtitle {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    margin-bottom: 24px;
+}
+
+.login-field {
+    margin-bottom: 16px;
+}
+
+.login-field label {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+}
+
+.login-field input {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 0.9rem;
+}
+
+.login-field input:focus {
+    outline: none;
+    border-color: var(--claude-orange);
+}
+
+.login-btn {
+    width: 100%;
+    padding: 10px;
+    background: var(--claude-orange);
+    border: none;
+    color: white;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: opacity 0.2s;
+    margin-top: 8px;
+}
+
+.login-btn:hover { opacity: 0.9; }
+.login-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.login-error {
+    color: var(--error);
+    font-size: 0.8rem;
+    margin-top: 12px;
+    display: none;
+}
+
+.login-error.visible { display: block; }
+
+#confirm-field { display: none; }

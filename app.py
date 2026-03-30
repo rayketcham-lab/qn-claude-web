@@ -232,7 +232,7 @@ def add_security_headers(response):
     connect_origins = f"'self' {ws_proto}://{host}:{port}"
     csp = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdn.socket.io; "
+        "script-src 'self' https://cdn.jsdelivr.net https://cdn.socket.io; "
         "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
         f"connect-src {connect_origins}; "
         "img-src 'self' data:; "

@@ -29,11 +29,11 @@ VERSION="1.6.0"
 
 # SHA-256 hashes baked at build time
 declare -A FILE_HASHES=(
-    ["app.py"]="f82c5ea8026fa4b1b1e8afa8b33aa8b513213d1b1d76fae49c3a44a5d6ba7fa8"
+    ["app.py"]="b02312f34a11e5c14de3ef907524b6de84a7dc7467fb47fc4b254cb01f1ba5d1"
     ["static/js/app.js"]="6679f6b15c452046dc689f82ec0107a03952073aaeee04e733c4123ad93d6379"
-    ["static/css/style.css"]="5fb199bc175bef59b5cb4efa14882975385f7dd443535f575159e1863542b9c8"
-    ["templates/index.html"]="4f8138703efcab691f5bde10fc32b3fdf7419d3eb1650105d139c829d6125eb2"
-    ["templates/login.html"]="5e77d824bad5af53a817ea7cf554992cb1d77e2050a41bd0add00880d5454aac"
+    ["static/css/style.css"]="07bf5931e542e5f25750a003643f76149720c8209e5b901d4fdbf1a185cab556"
+    ["templates/index.html"]="728dd3180ddcc8c1e248f60b02bba97f2db404637cedc0a24e630db50a0ef626"
+    ["templates/login.html"]="d382dc550d57798de777d0ad43a1496593985d85fc74f7b378ee24518d2083f2"
     ["requirements.txt"]="4122e97cfa01caa3042e3d3b3e35a778a9e658c84a62a31177f19c041785c8d5"
     ["static/manifest.json"]="c2872d517d42875cd02f0dfdb5e9a8d79522097dd1b016450fc3afe59cace431"
     ["static/sw.js"]="dd99f2f9ead0c3efd1067724e76939e297632f3d959f3522cc33c54601373402"
