@@ -238,11 +238,22 @@ def clear_lockout(ip: str):
         _lockout_store.pop(ip, None)
 
 
-# Configuration
+# ============== Configuration ==============
+
 CONFIG_FILE = Path(__file__).parent / 'config.json'
+AUTH_FILE = Path(__file__).parent / 'auth.json'
+
+# Keys that belong in auth.json — excluded from config.json on every save
+_AUTH_KEYS = frozenset({'secret_key', 'users', 'auth'})
+
 
 def load_config():
-    """Load config from disk, merging with defaults"""
+    """Load non-sensitive config from disk, merging with defaults.
+
+    Auth-related keys (secret_key, users, auth) live in auth.json and are
+    never loaded here.  Any such keys found in config.json are silently
+    ignored — migration happens in load_auth().
+    """
     defaults = {
         'host': '0.0.0.0',
         'port': 5001,
@@ -255,26 +266,24 @@ def load_config():
         'remote_hosts': [],
         'allowed_paths': ['/opt'],
         'allow_full_browsing': False,
-        'auth': {
-            'enabled': False,
-            'username': '',
-            'password_hash': '',
-        },
         'ssl_enabled': False,
         'ssl_cert': '',
         'ssl_key': '',
         'chat_cwd': '/opt/claude',
         'persistent_session_id': '',
         'theme': 'dark',
-        'users': [],
         'active_agents': ['architect', 'builder', 'tester', 'secops', 'devops'],
         'custom_agents': [],
         'multi_tenant': False,
+        'default_engine': 'claude',
     }
     if CONFIG_FILE.exists():
         try:
             with open(CONFIG_FILE) as f:
                 file_config = json.load(f)
+            # Strip auth keys — they must not live in config.json
+            for key in _AUTH_KEYS:
+                file_config.pop(key, None)
             defaults.update(file_config)
         except Exception as e:
             logger.error("Config load error: %s", e)
@@ -292,7 +301,7 @@ def load_config():
         except (TypeError, ValueError):
             defaults[key] = fallback
     for key, fallback in [('favorites', []), ('remote_hosts', []), ('default_flags', []),
-                          ('allowed_paths', ['/opt']), ('users', []),
+                          ('allowed_paths', ['/opt']),
                           ('active_agents', ['architect', 'builder', 'tester', 'secops', 'devops']),
                           ('custom_agents', [])]:
         if not isinstance(defaults.get(key), list):
@@ -301,10 +310,14 @@ def load_config():
     defaults['projects_root'] = os.path.expanduser(defaults['projects_root'])
     return defaults
 
+
 def save_config(config_dict):
-    """Save config to disk (thread-safe via config_lock)."""
+    """Save non-sensitive config to disk (thread-safe via config_lock).
+
+    Auth-related keys are silently excluded — they belong in auth.json.
+    """
     to_save = {k: v for k, v in config_dict.items()
-               if k not in ('sessions_dir', 'backup_dir')}
+               if k not in ('sessions_dir', 'backup_dir') and k not in _AUTH_KEYS}
     # Convert Path objects to strings for JSON
     for k, v in to_save.items():
         if isinstance(v, Path):
@@ -316,22 +329,114 @@ def save_config(config_dict):
     except Exception as e:
         logger.error("Config save error: %s", e)
 
+
+def _write_auth_file(auth_dict):
+    """Write auth.json atomically with mode 0600 (owner-read/write only).
+
+    Uses a temp-file + rename dance to avoid partial reads during writes.
+    """
+    auth_path = str(AUTH_FILE)
+    try:
+        fd, tmp_path = tempfile.mkstemp(dir=str(AUTH_FILE.parent), suffix='.tmp')
+        try:
+            with os.fdopen(fd, 'w') as f:
+                json.dump(auth_dict, f, indent=2)
+            os.chmod(tmp_path, 0o600)
+            os.replace(tmp_path, auth_path)
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
+    except Exception as e:
+        logger.error("Auth save error: %s", e)
+
+
+def save_auth(auth_dict):
+    """Persist auth credentials to auth.json (thread-safe via auth_lock)."""
+    with auth_lock:
+        _write_auth_file(auth_dict)
+
+
+def load_auth():
+    """Load auth credentials from auth.json, migrating from config.json if needed.
+
+    Migration (backwards-compatible):
+      If auth.json does not exist but config.json contains auth keys
+      (secret_key / users / auth), those values are moved to auth.json and
+      removed from config.json automatically.
+
+    Returns a dict with keys: secret_key, users, auth.
+    """
+    auth_defaults = {
+        'secret_key': '',
+        'users': [],
+        'auth': {
+            'enabled': False,
+            'username': '',
+            'password_hash': '',
+        },
+    }
+
+    if AUTH_FILE.exists():
+        try:
+            with open(AUTH_FILE) as f:
+                stored = json.load(f)
+            auth_defaults.update(stored)
+            if not isinstance(auth_defaults.get('users'), list):
+                auth_defaults['users'] = []
+            return auth_defaults
+        except Exception as e:
+            logger.error("Auth load error: %s", e)
+            return auth_defaults
+
+    # auth.json does not exist — check config.json for legacy auth data to migrate
+    migrated = {}
+    if CONFIG_FILE.exists():
+        try:
+            with open(CONFIG_FILE) as f:
+                file_config = json.load(f)
+            for key in _AUTH_KEYS:
+                if key in file_config:
+                    migrated[key] = file_config.pop(key)
+            if migrated:
+                logger.info("Migrating auth credentials from config.json to auth.json")
+                # Rewrite config.json without the auth keys
+                with open(CONFIG_FILE, 'w') as f:
+                    json.dump(file_config, f, indent=2)
+        except Exception as e:
+            logger.error("Auth migration error reading config.json: %s", e)
+
+    auth_defaults.update(migrated)
+    if not isinstance(auth_defaults.get('users'), list):
+        auth_defaults['users'] = []
+
+    # Persist auth.json (even if empty, to skip re-scanning config.json on next start)
+    _write_auth_file(auth_defaults)
+    return auth_defaults
+
+
 CONFIG = load_config()
 config_lock = threading.Lock()
+# auth_lock must exist before load_auth() is called (save_auth uses it)
+auth_lock = threading.Lock()
+AUTH = load_auth()
+
 CONFIG['sessions_dir'] = Path(__file__).parent / 'sessions'
 CONFIG['backup_dir'] = Path(__file__).parent / 'backups'
 
 # Per-user data root (created lazily; each subdir is 0700)
 USER_DATA_DIR = Path(__file__).parent / 'user-data'
 
-# Secret key: env var takes precedence, then config.json fallback, then auto-generate
+# Secret key: env var takes precedence, then auth.json fallback, then auto-generate
 _secret_key = os.environ.get('QN_SECRET_KEY')
 if not _secret_key:
-    _secret_key = CONFIG.get('secret_key')
+    _secret_key = AUTH.get('secret_key')
 if not _secret_key:
     _secret_key = os.urandom(24).hex()
-    CONFIG['secret_key'] = _secret_key
-    save_config(CONFIG)
+    AUTH['secret_key'] = _secret_key
+    save_auth(AUTH)
 app.secret_key = _secret_key
 
 # Secure cookie configuration
@@ -398,7 +503,7 @@ def csrf_protect(f):
     """Decorator to require CSRF token on state-changing endpoints."""
     @wraps(f)
     def decorated(*args, **kwargs):
-        auth_config = CONFIG.get('auth', {})
+        auth_config = AUTH.get('auth', {})
         if not auth_config.get('enabled', False):
             return f(*args, **kwargs)
         if not _validate_csrf_token():
@@ -418,11 +523,21 @@ USAGE_FILE = Path(__file__).parent / 'usage.json'
 
 def load_usage():
     """Load usage data from disk"""
-    defaults = {'sessions': {}, 'weekly': {}, 'total': {'input_tokens': 0, 'output_tokens': 0}}
+    defaults = {
+        'sessions': {},
+        'weekly': {},
+        'daily': {},
+        'total': {'input_tokens': 0, 'output_tokens': 0},
+        'users': {},
+    }
     if USAGE_FILE.exists():
         try:
             with open(USAGE_FILE) as f:
-                return json.load(f)
+                data = json.load(f)
+            # Migrate legacy data: ensure new keys exist
+            data.setdefault('users', {})
+            data.setdefault('daily', {})
+            return data
         except Exception:
             pass
     return defaults
@@ -440,6 +555,79 @@ def get_week_key():
     now = datetime.now()
     return f"{now.isocalendar()[0]}-W{now.isocalendar()[1]:02d}"
 
+def get_day_key():
+    """Get date key like '2026-03-29'"""
+    return datetime.now().strftime('%Y-%m-%d')
+
+# Model pricing per 1M tokens (input, output) in USD
+MODEL_PRICING = {
+    'sonnet': (3.0, 15.0),
+    'opus':   (15.0, 75.0),
+    'haiku':  (0.25, 1.25),
+}
+
+def estimate_cost(input_tokens: int, output_tokens: int, model: str = 'sonnet') -> float:
+    """Estimate USD cost for a token count given a model family name."""
+    model_key = model.lower()
+    # Match partial model names (e.g. 'claude-sonnet-4' -> 'sonnet')
+    for key in MODEL_PRICING:
+        if key in model_key:
+            price_in, price_out = MODEL_PRICING[key]
+            return round(
+                (input_tokens / 1_000_000) * price_in +
+                (output_tokens / 1_000_000) * price_out,
+                6
+            )
+    # Default to sonnet pricing when model is unknown
+    price_in, price_out = MODEL_PRICING['sonnet']
+    return round(
+        (input_tokens / 1_000_000) * price_in +
+        (output_tokens / 1_000_000) * price_out,
+        6
+    )
+
+def record_token_usage(input_tokens: int, output_tokens: int, username: str = '') -> None:
+    """Persist token usage — global totals, per-user, weekly, and daily buckets.
+
+    This is the single authoritative function for mutating usage.json.
+    All callers should use this instead of hand-rolling the load/update/save cycle.
+    """
+    try:
+        usage = load_usage()
+        week_key = get_week_key()
+        day_key = get_day_key()
+
+        # --- weekly bucket ---
+        usage.setdefault('weekly', {})
+        week = usage['weekly'].setdefault(week_key, {'input_tokens': 0, 'output_tokens': 0})
+        week['input_tokens'] += input_tokens
+        week['output_tokens'] += output_tokens
+
+        # --- daily bucket ---
+        usage.setdefault('daily', {})
+        day = usage['daily'].setdefault(day_key, {'input_tokens': 0, 'output_tokens': 0})
+        day['input_tokens'] += input_tokens
+        day['output_tokens'] += output_tokens
+
+        # --- global total ---
+        usage.setdefault('total', {'input_tokens': 0, 'output_tokens': 0})
+        usage['total']['input_tokens'] += input_tokens
+        usage['total']['output_tokens'] += output_tokens
+
+        # --- per-user bucket ---
+        if username:
+            usage.setdefault('users', {})
+            user_stats = usage['users'].setdefault(
+                username,
+                {'input_tokens': 0, 'output_tokens': 0, 'sessions': 0}
+            )
+            user_stats['input_tokens'] += input_tokens
+            user_stats['output_tokens'] += output_tokens
+
+        save_usage(usage)
+    except Exception as ue:
+        logger.warning("Usage record error: %s", ue)
+
 
 # ============== Authentication ==============
 
@@ -447,7 +635,7 @@ def login_required(f):
     """Decorator to require authentication on routes"""
     @wraps(f)
     def decorated(*args, **kwargs):
-        auth_config = CONFIG.get('auth', {})
+        auth_config = AUTH.get('auth', {})
         if not auth_config.get('enabled', False):
             return f(*args, **kwargs)
         if not session.get('authenticated'):
@@ -975,6 +1163,80 @@ def deploy_agents(project_path, active_agent_ids, custom_agents):
     return deployed
 
 
+# ============== AI Engine Adapters ==============
+
+class AIEngine:
+    """Base class for AI CLI engine adapters."""
+    name = ''
+    binary = ''
+
+    def detect(self):
+        """Check if this engine's CLI is installed."""
+        import shutil
+        return shutil.which(self.binary) is not None
+
+    def build_command(self, project_path, flags, prompt=None, remote_host=None):
+        """Build the CLI command for this engine."""
+        raise NotImplementedError
+
+    def build_env(self, flags, username=None):
+        """Build environment variables for this engine."""
+        return {}
+
+    def parse_usage(self, output_line):
+        """Parse token usage from CLI output. Returns (input_tokens, output_tokens) or None."""
+        return None
+
+
+class ClaudeEngine(AIEngine):
+    """Adapter for the Claude Code CLI."""
+    name = 'claude'
+    binary = 'claude'
+
+    def build_command(self, project_path, flags, prompt=None, remote_host=None):
+        """Delegate to the top-level build_claude_command() function."""
+        return build_claude_command(project_path, flags, prompt=prompt, remote_host=remote_host)
+
+    def build_env(self, flags, username=None):
+        """Delegate to the top-level build_claude_env() function."""
+        return build_claude_env(flags, username=username)
+
+
+class AiderEngine(AIEngine):
+    """Adapter for the Aider CLI (aider-chat)."""
+    name = 'aider'
+    binary = 'aider'
+
+    def build_command(self, project_path, flags, prompt=None, remote_host=None):
+        cmd = [self.binary]
+        if flags.get('model'):
+            cmd.extend(['--model', flags['model']])
+        if prompt:
+            cmd.extend(['--message', prompt])
+        return cmd
+
+    def build_env(self, flags, username=None):
+        env = {}
+        # Aider uses ANTHROPIC_API_KEY or OPENAI_API_KEY from the environment.
+        # Per-user key injection is handled at a higher level if needed.
+        return env
+
+
+ENGINE_REGISTRY = {
+    'claude': ClaudeEngine(),
+    'aider': AiderEngine(),
+}
+
+
+def get_engine(name=None):
+    """Return the engine adapter for *name*, defaulting to 'claude'.
+
+    Falls back to ClaudeEngine for any unknown name so callers always
+    receive a usable adapter.
+    """
+    return ENGINE_REGISTRY.get(name or 'claude', ENGINE_REGISTRY['claude'])
+
+
 def build_claude_env(flags, username=None):
     """Build environment variables dict for Claude process.
     Starts from current env and adds Claude-specific vars based on flags.
@@ -1208,7 +1470,7 @@ def index():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     """Login page"""
-    auth_config = CONFIG.get('auth', {})
+    auth_config = AUTH.get('auth', {})
     if not auth_config.get('enabled', False):
         return redirect('/')
 
@@ -1241,7 +1503,7 @@ def login():
         password = data.get('password', '')
 
         # Check multi-user list first
-        users = CONFIG.get('users', [])
+        users = AUTH.get('users', [])
         authenticated = False
         user_role = 'admin'
 
@@ -1295,6 +1557,22 @@ def api_health():
     })
 
 
+@app.route('/api/engines')
+@login_required
+def api_engines():
+    """List all registered AI engine adapters with their detection status."""
+    default_engine = CONFIG.get('default_engine', 'claude')
+    engines = []
+    for engine_name, engine in ENGINE_REGISTRY.items():
+        engines.append({
+            'name': engine_name,
+            'binary': engine.binary,
+            'available': engine.detect(),
+            'default': engine_name == default_engine,
+        })
+    return jsonify({'engines': engines})
+
+
 @app.route('/logout')
 def logout():
     """Logout"""
@@ -1307,7 +1585,7 @@ def logout():
 @app.route('/api/auth/status')
 def auth_status():
     """Public endpoint - check auth state"""
-    auth_config = CONFIG.get('auth', {})
+    auth_config = AUTH.get('auth', {})
     return jsonify({
         'auth_enabled': auth_config.get('enabled', False),
         'needs_setup': not auth_config.get('password_hash', ''),
@@ -1323,7 +1601,7 @@ def auth_setup():
     if not check_rate_limit('auth_setup', client_ip, max_attempts=5, window_seconds=3600):
         return jsonify({'error': 'Too many setup attempts. Try again later.'}), 429
 
-    auth_config = CONFIG.get('auth', {})
+    auth_config = AUTH.get('auth', {})
     if auth_config.get('enabled') and auth_config.get('password_hash'):
         # Already set up - require auth to change
         if not session.get('authenticated'):
@@ -1341,22 +1619,22 @@ def auth_setup():
         return jsonify({'error': 'Password must be at least 8 characters'}), 400
 
     pw_hash = generate_password_hash(password)
-    CONFIG['auth'] = {
+    AUTH['auth'] = {
         'enabled': True,
         'username': username,
         'password_hash': pw_hash,
     }
 
     # Also add/update in users list
-    users = CONFIG.get('users', [])
+    users = AUTH.get('users', [])
     existing = next((u for u in users if u['username'] == username), None)
     if existing:
         existing['password_hash'] = pw_hash
         existing['role'] = 'admin'
     else:
         users.append({'username': username, 'password_hash': pw_hash, 'role': 'admin'})
-    CONFIG['users'] = users
-    save_config(CONFIG)
+    AUTH['users'] = users
+    save_auth(AUTH)
 
     # Auto-login after setup
     session['authenticated'] = True
@@ -2128,6 +2406,21 @@ def new_chat_session():
     # Save to disk
     save_session(session_id)
 
+    # Increment per-user session count
+    _session_creator = session.get('username', '')
+    if _session_creator:
+        try:
+            _usage = load_usage()
+            _usage.setdefault('users', {})
+            _user_stats = _usage['users'].setdefault(
+                _session_creator,
+                {'input_tokens': 0, 'output_tokens': 0, 'sessions': 0}
+            )
+            _user_stats['sessions'] = _user_stats.get('sessions', 0) + 1
+            save_usage(_usage)
+        except Exception as _ue:
+            logger.warning("Session count update error: %s", _ue)
+
     return jsonify(chat_sessions[session_id])
 
 
@@ -2194,7 +2487,7 @@ def load_session(session_id):
 
 def _ws_auth_check():
     """Re-validate session on sensitive WebSocket events. Returns True if authorized."""
-    auth_config = CONFIG.get('auth', {})
+    auth_config = AUTH.get('auth', {})
     if not auth_config.get('enabled', False):
         return True
     if not session.get('authenticated'):
@@ -2212,7 +2505,7 @@ def _ws_auth_check():
 @socketio.on('connect')
 def handle_connect():
     """Handle client connection — cancel pending disconnect grace if same browser reconnects"""
-    auth_config = CONFIG.get('auth', {})
+    auth_config = AUTH.get('auth', {})
     if auth_config.get('enabled', False) and not session.get('authenticated'):
         return False  # Reject unauthenticated SocketIO connections
 
@@ -2358,10 +2651,11 @@ def handle_terminal_create(data):
             })
             return
 
-    # Build command and environment (SSH-wrapped if remote)
+    # Build command and environment via the engine adapter (SSH-wrapped if remote)
     prompt = autonomous_task if autonomous_task else None
-    cmd = build_claude_command(project_path, flags, prompt=prompt, remote_host=remote_host)
-    claude_env = build_claude_env(flags, username=_terminal_owner)
+    _engine = get_engine(flags.get('engine') or CONFIG.get('default_engine', 'claude'))
+    cmd = _engine.build_command(project_path, flags, prompt=prompt, remote_host=remote_host)
+    claude_env = _engine.build_env(flags, username=_terminal_owner)
 
     # For SSH mode, don't chdir locally. For local/mount, chdir to project path
     use_local_chdir = not (remote_host and remote_host.get('mode') == 'ssh')
@@ -2842,10 +3136,11 @@ def handle_chat_message(data):
             (h for h in CONFIG.get('remote_hosts', []) if h['id'] == sess['remote_host_id']), None
         )
 
-    # Build command and environment (SSH-wrapped if remote)
-    cmd = build_claude_command(sess['project'], sess['flags'], message, remote_host=remote_host)
+    # Build command and environment via the engine adapter (SSH-wrapped if remote)
     _chat_owner = session.get('username', '')
-    claude_env = build_claude_env(sess['flags'], username=_chat_owner)
+    _engine = get_engine(sess['flags'].get('engine') or CONFIG.get('default_engine', 'claude'))
+    cmd = _engine.build_command(sess['project'], sess['flags'], message, remote_host=remote_host)
+    claude_env = _engine.build_env(sess['flags'], username=_chat_owner)
 
     # For SSH mode, cwd is irrelevant (cd happens on remote)
     use_cwd = sess['project'] if not (remote_host and remote_host.get('mode') == 'ssh') else None
@@ -2885,24 +3180,12 @@ def handle_chat_message(data):
                 if usage_match:
                     input_tokens = int(usage_match.group(1).replace(',', ''))
                     output_tokens = int(usage_match.group(2).replace(',', ''))
-                    # Update global usage
-                    try:
-                        usage = load_usage()
-                        week_key = get_week_key()
-                        if week_key not in usage.get('weekly', {}):
-                            usage.setdefault('weekly', {})[week_key] = {'input_tokens': 0, 'output_tokens': 0}
-                        usage['weekly'][week_key]['input_tokens'] += input_tokens
-                        usage['weekly'][week_key]['output_tokens'] += output_tokens
-                        usage['total']['input_tokens'] += input_tokens
-                        usage['total']['output_tokens'] += output_tokens
-                        save_usage(usage)
-                        socketio.emit('usage_update', {
-                            'session_id': session_id,
-                            'input_tokens': input_tokens,
-                            'output_tokens': output_tokens
-                        })
-                    except Exception as ue:
-                        logger.warning("Usage parse error: %s", ue)
+                    record_token_usage(input_tokens, output_tokens, username=_chat_owner)
+                    socketio.emit('usage_update', {
+                        'session_id': session_id,
+                        'input_tokens': input_tokens,
+                        'output_tokens': output_tokens
+                    })
 
             process.wait()
 
@@ -3517,7 +3800,7 @@ def get_user_api_key(username: str):
     Returns None if the user has no stored key or decryption fails."""
     if not username:
         return None
-    users = CONFIG.get('users', [])
+    users = AUTH.get('users', [])
     user = next((u for u in users if u['username'] == username), None)
     if not user:
         return None
@@ -3574,14 +3857,14 @@ def user_has_claude_credentials(username: str) -> bool:
 
 def get_current_user():
     """Get current logged-in user info"""
-    users = CONFIG.get('users', [])
+    users = AUTH.get('users', [])
     username = session.get('username', '')
     for u in users:
         if u['username'] == username:
             return u
     # Fallback: if using legacy auth, treat as admin
     if session.get('authenticated'):
-        auth = CONFIG.get('auth', {})
+        auth = AUTH.get('auth', {})
         return {'username': auth.get('username', 'admin'), 'role': 'admin'}
     return None
 
@@ -3605,7 +3888,7 @@ def api_list_users():
     if not user or user.get('role') != 'admin':
         return jsonify({'error': 'Admin access required'}), 403
 
-    users = CONFIG.get('users', [])
+    users = AUTH.get('users', [])
     # Don't return password hashes
     safe_users = [{'username': u['username'], 'role': u.get('role', 'user')} for u in users]
     return jsonify({'users': safe_users})
@@ -3632,7 +3915,7 @@ def api_create_user():
     if role not in ('admin', 'user'):
         return jsonify({'error': 'Role must be admin or user'}), 400
 
-    users = CONFIG.get('users', [])
+    users = AUTH.get('users', [])
     if any(u['username'] == username for u in users):
         return jsonify({'error': 'Username already exists'}), 409
 
@@ -3641,8 +3924,8 @@ def api_create_user():
         'password_hash': generate_password_hash(password),
         'role': role,
     })
-    CONFIG['users'] = users
-    save_config(CONFIG)
+    AUTH['users'] = users
+    save_auth(AUTH)
 
     return jsonify({'success': True})
 
@@ -3659,9 +3942,9 @@ def api_delete_user(username):
     if username == user['username']:
         return jsonify({'error': 'Cannot delete yourself'}), 400
 
-    users = CONFIG.get('users', [])
-    CONFIG['users'] = [u for u in users if u['username'] != username]
-    save_config(CONFIG)
+    users = AUTH.get('users', [])
+    AUTH['users'] = [u for u in users if u['username'] != username]
+    save_auth(AUTH)
 
     return jsonify({'success': True})
 
@@ -3684,12 +3967,12 @@ def api_change_user_password(username):
     if not password or len(password) < 8:
         return jsonify({'error': 'Password must be at least 8 characters'}), 400
 
-    users = CONFIG.get('users', [])
+    users = AUTH.get('users', [])
     for u in users:
         if u['username'] == username:
             u['password_hash'] = generate_password_hash(password)
-            CONFIG['users'] = users
-            save_config(CONFIG)
+            AUTH['users'] = users
+            save_auth(AUTH)
             return jsonify({'success': True})
 
     return jsonify({'error': 'User not found'}), 404
@@ -3776,14 +4059,14 @@ def api_store_api_key():
         logger.error("API key encryption failed for %s: %s", username, exc)
         return jsonify({'error': 'Failed to encrypt API key'}), 500
 
-    users = CONFIG.get('users', [])
+    users = AUTH.get('users', [])
     user_record = next((u for u in users if u['username'] == username), None)
     if user_record is None:
         return jsonify({'error': 'User record not found'}), 404
 
     user_record['encrypted_api_key'] = encrypted
-    CONFIG['users'] = users
-    save_config(CONFIG)
+    AUTH['users'] = users
+    save_auth(AUTH)
 
     logger.info("Stored encrypted API key for user %s", username)
     return jsonify({'success': True})
@@ -3798,14 +4081,14 @@ def api_delete_api_key():
     if not username:
         return jsonify({'error': 'Not authenticated'}), 401
 
-    users = CONFIG.get('users', [])
+    users = AUTH.get('users', [])
     user_record = next((u for u in users if u['username'] == username), None)
     if user_record is None:
         return jsonify({'error': 'User record not found'}), 404
 
     user_record.pop('encrypted_api_key', None)
-    CONFIG['users'] = users
-    save_config(CONFIG)
+    AUTH['users'] = users
+    save_auth(AUTH)
 
     logger.info("Deleted API key for user %s", username)
     return jsonify({'success': True})
@@ -3823,7 +4106,7 @@ def api_get_api_key():
     if not username:
         return jsonify({'error': 'Not authenticated'}), 401
 
-    users = CONFIG.get('users', [])
+    users = AUTH.get('users', [])
     user_record = next((u for u in users if u['username'] == username), None)
     if not user_record or not user_record.get('encrypted_api_key'):
         return jsonify({'has_key': False})
@@ -3933,7 +4216,7 @@ def api_onboarding_status():
     returns ``{"needs_onboarding": false, ...}`` immediately.
     """
     # Solo mode — no per-user onboarding needed
-    if not CONFIG.get('auth', {}).get('enabled'):
+    if not AUTH.get('auth', {}).get('enabled'):
         return jsonify({
             'needs_onboarding': False,
             'steps': {'account': True, 'credentials': True, 'project': True},
@@ -3943,7 +4226,7 @@ def api_onboarding_status():
     if not username:
         return jsonify({'error': 'Not authenticated'}), 401
 
-    users = CONFIG.get('users', [])
+    users = AUTH.get('users', [])
     user_record = next((u for u in users if u['username'] == username), None)
     if user_record is None:
         return jsonify({'error': 'User record not found'}), 404
@@ -3988,21 +4271,21 @@ def api_onboarding_complete():
     Sets ``onboarded: true`` on the user record and persists config.
     """
     # Solo mode — nothing to persist
-    if not CONFIG.get('auth', {}).get('enabled'):
+    if not AUTH.get('auth', {}).get('enabled'):
         return jsonify({'success': True})
 
     username = session.get('username', '')
     if not username:
         return jsonify({'error': 'Not authenticated'}), 401
 
-    users = CONFIG.get('users', [])
+    users = AUTH.get('users', [])
     user_record = next((u for u in users if u['username'] == username), None)
     if user_record is None:
         return jsonify({'error': 'User record not found'}), 404
 
     user_record['onboarded'] = True
-    CONFIG['users'] = users
-    save_config(CONFIG)
+    AUTH['users'] = users
+    save_auth(AUTH)
 
     logger.info("Onboarding completed for user %s", username)
     return jsonify({'success': True})
@@ -4010,13 +4293,40 @@ def api_onboarding_complete():
 
 # ============== Usage & Terminals API ==============
 
+def _is_max_user() -> bool:
+    """Return True if the app is configured for a Max/Pro (non-API-key) subscription."""
+    return CONFIG.get('claude_plan', 'max') in ('max', 'pro')
+
+
+def _build_user_usage_response(user_stats: dict, model: str = 'sonnet') -> dict:
+    """Build the per-user portion of a usage response, with cost or tier info."""
+    input_tokens = user_stats.get('input_tokens', 0)
+    output_tokens = user_stats.get('output_tokens', 0)
+    sessions = user_stats.get('sessions', 0)
+    resp = {
+        'input_tokens': input_tokens,
+        'output_tokens': output_tokens,
+        'sessions': sessions,
+    }
+    if _is_max_user():
+        resp['plan'] = CONFIG.get('claude_plan', 'max')
+    else:
+        resp['estimated_cost_usd'] = estimate_cost(input_tokens, output_tokens, model)
+    return resp
+
+
 @app.route('/api/usage')
 @login_required
 def api_usage():
-    """Get usage statistics"""
+    """Get usage statistics for the current user.
+
+    Admin users receive their own stats plus an all-users breakdown.
+    Non-admin users receive only their own stats.
+    """
     usage = load_usage()
     week_key = get_week_key()
     weekly = usage.get('weekly', {}).get(week_key, {'input_tokens': 0, 'output_tokens': 0})
+    model = CONFIG.get('default_model', 'sonnet')
 
     # Calculate next Monday for weekly reset
     now = datetime.now()
@@ -4025,12 +4335,92 @@ def api_usage():
         hour=0, minute=0, second=0, microsecond=0
     ).isoformat()
 
-    return jsonify({
+    current_user = get_current_user()
+    username = (current_user or {}).get('username', '')
+    user_stats = usage.get('users', {}).get(
+        username, {'input_tokens': 0, 'output_tokens': 0, 'sessions': 0}
+    )
+
+    response = {
         'weekly': weekly,
         'total': usage.get('total', {'input_tokens': 0, 'output_tokens': 0}),
         'reset_time': reset_time,
-        'week_key': week_key
-    })
+        'week_key': week_key,
+        'user': _build_user_usage_response(user_stats, model),
+    }
+
+    # Admins also see the full per-user breakdown
+    if current_user and current_user.get('role') == 'admin':
+        all_users = usage.get('users', {})
+        response['users'] = {
+            u: _build_user_usage_response(stats, model)
+            for u, stats in all_users.items()
+        }
+
+    return jsonify(response)
+
+
+@app.route('/api/usage/summary')
+@login_required
+def api_usage_summary():
+    """Return aggregated usage summary.
+
+    Includes:
+    - Total token counts and cost estimate (or plan tier for Max/Pro users)
+    - Per-user breakdown (admin only; non-admins see only their own stats)
+    - Daily trend for the last 7 calendar days
+    """
+    usage = load_usage()
+    model = CONFIG.get('default_model', 'sonnet')
+
+    total = usage.get('total', {'input_tokens': 0, 'output_tokens': 0})
+    total_input = total.get('input_tokens', 0)
+    total_output = total.get('output_tokens', 0)
+
+    summary: dict = {
+        'total_input_tokens': total_input,
+        'total_output_tokens': total_output,
+    }
+    if _is_max_user():
+        summary['plan'] = CONFIG.get('claude_plan', 'max')
+    else:
+        summary['estimated_cost_usd'] = estimate_cost(total_input, total_output, model)
+
+    # Daily trend — last 7 calendar days, oldest first
+    today = datetime.now().date()
+    daily_trend = []
+    for offset in range(6, -1, -1):
+        day = today - timedelta(days=offset)
+        day_key = day.strftime('%Y-%m-%d')
+        day_data = usage.get('daily', {}).get(day_key, {'input_tokens': 0, 'output_tokens': 0})
+        entry = {
+            'date': day_key,
+            'input_tokens': day_data.get('input_tokens', 0),
+            'output_tokens': day_data.get('output_tokens', 0),
+        }
+        if not _is_max_user():
+            entry['estimated_cost_usd'] = estimate_cost(
+                entry['input_tokens'], entry['output_tokens'], model
+            )
+        daily_trend.append(entry)
+    summary['daily_trend'] = daily_trend
+
+    # Per-user breakdown — admin sees all users; others see only their own
+    current_user = get_current_user()
+    if current_user and current_user.get('role') == 'admin':
+        all_users = usage.get('users', {})
+        summary['users'] = {
+            u: _build_user_usage_response(stats, model)
+            for u, stats in all_users.items()
+        }
+    else:
+        username = (current_user or {}).get('username', '')
+        user_stats = usage.get('users', {}).get(
+            username, {'input_tokens': 0, 'output_tokens': 0, 'sessions': 0}
+        )
+        summary['user'] = _build_user_usage_response(user_stats, model)
+
+    return jsonify(summary)
 
 
 @app.route('/api/terminals')
@@ -4534,7 +4924,7 @@ if __name__ == '__main__':
             ssl_context = (cert, key)
         protocol = 'https'
 
-    auth_status = 'ENABLED' if CONFIG.get('auth', {}).get('enabled') else 'DISABLED'
+    auth_status = 'ENABLED' if AUTH.get('auth', {}).get('enabled') else 'DISABLED'
 
     logger.info("=" * 50)
     logger.info("QN Code Assistant v%s", VERSION)

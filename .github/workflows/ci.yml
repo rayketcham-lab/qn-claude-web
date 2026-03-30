@@ -94,10 +94,55 @@ jobs:
         run: pip install bandit
 
       - name: Run bandit SAST
-        run: bandit -r app.py -ll
+        run: bandit -r /opt/claude-web/app.py -ll
 
   # ---------------------------------------------------------------------------
-  # Job 4: Build Verification
+  # Job 4: Dependency Audit — pip-audit (Issue #37)
+  # Scans vendored packages against OSV/PyPI advisory databases for known CVEs.
+  # Generates a requirements list from vendor/*.dist-info to avoid needing a
+  # live pip environment — the vendor/ directory is the source of truth.
+  # continue-on-error: true initially so existing findings are visible but
+  # non-blocking. Flip to false once the vendor baseline is clean.
+  # ---------------------------------------------------------------------------
+  dependency-audit:
+    runs-on: [self-hosted, qnca]
+    needs: unit-tests
+    continue-on-error: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: Generate requirements from vendor dist-info
+        run: |
+          ls -d /opt/claude-web/vendor/*.dist-info \
+            | sed 's|.*/||' \
+            | sed 's/\.dist-info$//' \
+            | sed 's/_/-/g' \
+            | sed 's/-\([0-9]\)/==\1/' \
+            > /tmp/vendor-pkgs.txt
+          echo "Packages to audit:"
+          cat /tmp/vendor-pkgs.txt
+
+      - name: Run pip-audit against vendor packages
+        run: |
+          pip-audit \
+            -r /tmp/vendor-pkgs.txt \
+            --no-deps \
+            -f json \
+            -o /tmp/pip-audit-results.json \
+            --progress-spinner off \
+          || true
+          pip-audit \
+            -r /tmp/vendor-pkgs.txt \
+            --no-deps \
+            --progress-spinner off
+
+  # ---------------------------------------------------------------------------
+  # Job 5: Build Verification
   # Rebuilds the installer, verifies hash integrity, and (on main only)
   # produces the self-extracting release artifact.
   # ---------------------------------------------------------------------------
@@ -133,7 +178,7 @@ jobs:
           echo "Release artifact verified: ${RELEASE_FILE}"
 
   # ---------------------------------------------------------------------------
-  # Job 5: Docker Build + Smoke Test
+  # Job 6: Docker Build + Smoke Test
   # Builds the Docker image from the Dockerfile, starts a container on a
   # non-conflicting port, waits for the app to become healthy, then tears
   # everything down.  continue-on-error: true because the self-hosted runner

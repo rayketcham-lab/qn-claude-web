@@ -35,23 +35,27 @@ flask_app.config['WTF_CSRF_ENABLED'] = False
 
 
 # ---------------------------------------------------------------------------
-# Helper: snapshot and restore CONFIG state around each test
+# Helper: snapshot and restore CONFIG/AUTH state around each test
 # ---------------------------------------------------------------------------
 
 def _snapshot_config():
-    """Return a shallow copy of CONFIG with auth/users sub-dicts deep-copied."""
-    snap = dict(app_module.CONFIG)
-    snap['auth'] = dict(app_module.CONFIG.get('auth', {}))
-    snap['users'] = [dict(u) for u in app_module.CONFIG.get('users', [])]
-    return snap
+    """Return shallow copies of CONFIG and AUTH with sub-dicts deep-copied."""
+    config_snap = dict(app_module.CONFIG)
+    auth_snap = dict(app_module.AUTH)
+    auth_snap['auth'] = dict(app_module.AUTH.get('auth', {}))
+    auth_snap['users'] = [dict(u) for u in app_module.AUTH.get('users', [])]
+    return config_snap, auth_snap
 
 
 def _restore_config(snap):
-    """Restore CONFIG to a previously snapshotted state."""
+    """Restore CONFIG and AUTH to a previously snapshotted state."""
+    config_snap, auth_snap = snap
     app_module.CONFIG.clear()
-    app_module.CONFIG.update(snap)
-    app_module.CONFIG['auth'] = snap['auth']
-    app_module.CONFIG['users'] = [dict(u) for u in snap['users']]
+    app_module.CONFIG.update(config_snap)
+    app_module.AUTH.clear()
+    app_module.AUTH.update(auth_snap)
+    app_module.AUTH['auth'] = auth_snap['auth']
+    app_module.AUTH['users'] = [dict(u) for u in auth_snap['users']]
 
 
 def _get_csrf(client):
@@ -76,22 +80,22 @@ def _reset_rate_limits():
 # ---------------------------------------------------------------------------
 
 def _enable_auth(username='testadmin', password='testpass123'):
-    """Configure CONFIG to have auth enabled with a known admin account."""
+    """Configure AUTH to have auth enabled with a known admin account."""
     pw_hash = generate_password_hash(password)
-    app_module.CONFIG['auth'] = {
+    app_module.AUTH['auth'] = {
         'enabled': True,
         'username': username,
         'password_hash': pw_hash,
     }
-    app_module.CONFIG['users'] = [
+    app_module.AUTH['users'] = [
         {'username': username, 'password_hash': pw_hash, 'role': 'admin'}
     ]
 
 
 def _disable_auth():
-    """Configure CONFIG to have auth disabled."""
-    app_module.CONFIG['auth'] = {'enabled': False, 'username': '', 'password_hash': ''}
-    app_module.CONFIG['users'] = []
+    """Configure AUTH to have auth disabled."""
+    app_module.AUTH['auth'] = {'enabled': False, 'username': '', 'password_hash': ''}
+    app_module.AUTH['users'] = []
 
 
 def _login(client, username='testadmin', password='testpass123'):
@@ -178,8 +182,8 @@ class TestAuthRoutes(unittest.TestCase):
         data = resp.get_json()
         self.assertTrue(data.get('success'))
         # Verify CONFIG was updated
-        self.assertTrue(app_module.CONFIG['auth']['enabled'])
-        self.assertEqual(app_module.CONFIG['auth']['username'], 'newadmin')
+        self.assertTrue(app_module.AUTH['auth']['enabled'])
+        self.assertEqual(app_module.AUTH['auth']['username'], 'newadmin')
 
     def test_auth_setup_password_too_short(self):
         """POST /api/auth/setup with password < 8 chars returns 400."""
@@ -283,12 +287,12 @@ class TestConfigAdminGate(unittest.TestCase):
         # Set up auth with an admin and a regular user
         admin_hash = generate_password_hash('adminpass1')
         user_hash = generate_password_hash('userpass1!')
-        app_module.CONFIG['auth'] = {
+        app_module.AUTH['auth'] = {
             'enabled': True,
             'username': 'adminuser',
             'password_hash': admin_hash,
         }
-        app_module.CONFIG['users'] = [
+        app_module.AUTH['users'] = [
             {'username': 'adminuser', 'password_hash': admin_hash, 'role': 'admin'},
             {'username': 'regularuser', 'password_hash': user_hash, 'role': 'user'},
         ]
@@ -476,12 +480,12 @@ class TestUserManagement(unittest.TestCase):
         _reset_rate_limits()
         admin_hash = generate_password_hash('adminpass1')
         user_hash = generate_password_hash('userpass1!')
-        app_module.CONFIG['auth'] = {
+        app_module.AUTH['auth'] = {
             'enabled': True,
             'username': 'adminuser',
             'password_hash': admin_hash,
         }
-        app_module.CONFIG['users'] = [
+        app_module.AUTH['users'] = [
             {'username': 'adminuser', 'password_hash': admin_hash, 'role': 'admin'},
             {'username': 'regularuser', 'password_hash': user_hash, 'role': 'user'},
         ]
@@ -529,7 +533,7 @@ class TestUserManagement(unittest.TestCase):
         data = resp.get_json()
         self.assertTrue(data.get('success'))
         # Verify user was added to CONFIG
-        usernames = [u['username'] for u in app_module.CONFIG['users']]
+        usernames = [u['username'] for u in app_module.AUTH['users']]
         self.assertIn('brandnew', usernames)
 
     def test_create_duplicate_user_returns_409(self):
@@ -578,12 +582,12 @@ class TestCSRFProtection(unittest.TestCase):
 
     def setUp(self):
         self._orig_config = dict(app_module.CONFIG)
-        app_module.CONFIG['auth'] = {
+        app_module.AUTH['auth'] = {
             'enabled': True,
             'username': 'admin',
             'password_hash': generate_password_hash('testpass123'),
         }
-        app_module.CONFIG['users'] = [{
+        app_module.AUTH['users'] = [{
             'username': 'admin',
             'password_hash': generate_password_hash('testpass123'),
             'role': 'admin',
@@ -640,7 +644,7 @@ class TestCSRFProtection(unittest.TestCase):
 
     def test_csrf_not_required_when_auth_disabled(self):
         """CSRF check is skipped when auth is disabled."""
-        app_module.CONFIG['auth']['enabled'] = False
+        app_module.AUTH['auth']['enabled'] = False
         with flask_app.test_client() as client:
             resp = client.post(
                 '/api/config',
@@ -701,13 +705,13 @@ class TestWebSocketAuth(unittest.TestCase):
 
     def test_ws_auth_passes_when_auth_disabled(self):
         """_ws_auth_check returns True when auth is not enabled."""
-        app_module.CONFIG['auth'] = {'enabled': False}
+        app_module.AUTH['auth'] = {'enabled': False}
         with flask_app.test_request_context():
             self.assertTrue(app_module._ws_auth_check())
 
     def test_ws_auth_fails_when_not_authenticated(self):
         """_ws_auth_check returns False when session is not authenticated."""
-        app_module.CONFIG['auth'] = {'enabled': True}
+        app_module.AUTH['auth'] = {'enabled': True}
         with flask_app.test_request_context():
             from flask import session as flask_session
             flask_session.clear()
@@ -715,7 +719,7 @@ class TestWebSocketAuth(unittest.TestCase):
 
     def test_ws_auth_fails_on_expired_session(self):
         """_ws_auth_check returns False when session has expired."""
-        app_module.CONFIG['auth'] = {'enabled': True}
+        app_module.AUTH['auth'] = {'enabled': True}
         app_module.CONFIG['session_timeout_hours'] = 1
         with flask_app.test_request_context():
             from flask import session as flask_session
@@ -725,7 +729,7 @@ class TestWebSocketAuth(unittest.TestCase):
 
     def test_ws_auth_passes_with_valid_session(self):
         """_ws_auth_check returns True with a valid, non-expired session."""
-        app_module.CONFIG['auth'] = {'enabled': True}
+        app_module.AUTH['auth'] = {'enabled': True}
         app_module.CONFIG['session_timeout_hours'] = 24
         with flask_app.test_request_context():
             from flask import session as flask_session
@@ -790,7 +794,7 @@ class TestApiKeyEncryption(unittest.TestCase):
 
     def test_get_user_api_key_returns_none_when_no_key(self):
         """get_user_api_key returns None when the user has no stored key."""
-        app_module.CONFIG['users'] = [
+        app_module.AUTH['users'] = [
             {'username': 'alice', 'password_hash': 'x', 'role': 'user'}
         ]
         result = app_module.get_user_api_key('alice')
@@ -798,7 +802,7 @@ class TestApiKeyEncryption(unittest.TestCase):
 
     def test_get_user_api_key_returns_none_for_unknown_user(self):
         """get_user_api_key returns None for a username not in CONFIG."""
-        app_module.CONFIG['users'] = []
+        app_module.AUTH['users'] = []
         result = app_module.get_user_api_key('nobody')
         self.assertIsNone(result)
 
@@ -806,7 +810,7 @@ class TestApiKeyEncryption(unittest.TestCase):
         """get_user_api_key decrypts and returns the stored key."""
         plaintext = 'sk-ant-api03-testapikey-AAAAA'
         encrypted = app_module.encrypt_api_key(plaintext, 'alice')
-        app_module.CONFIG['users'] = [
+        app_module.AUTH['users'] = [
             {'username': 'alice', 'password_hash': 'x', 'role': 'user',
              'encrypted_api_key': encrypted}
         ]
@@ -817,7 +821,7 @@ class TestApiKeyEncryption(unittest.TestCase):
         """build_claude_env injects ANTHROPIC_API_KEY when user has a stored key."""
         plaintext = 'sk-ant-api03-testapikey-AAAAA'
         encrypted = app_module.encrypt_api_key(plaintext, 'alice')
-        app_module.CONFIG['users'] = [
+        app_module.AUTH['users'] = [
             {'username': 'alice', 'password_hash': 'x', 'role': 'user',
              'encrypted_api_key': encrypted}
         ]
@@ -827,7 +831,7 @@ class TestApiKeyEncryption(unittest.TestCase):
     def test_build_claude_env_no_key_when_no_stored_key(self):
         """build_claude_env does not override ANTHROPIC_API_KEY when user has none."""
         import os
-        app_module.CONFIG['users'] = [
+        app_module.AUTH['users'] = [
             {'username': 'alice', 'password_hash': 'x', 'role': 'user'}
         ]
         # Remove the env var to test that it remains absent
@@ -985,7 +989,7 @@ class TestApiKeyRoutes(unittest.TestCase):
                 headers=headers,
             )
 
-        users = app_module.CONFIG.get('users', [])
+        users = app_module.AUTH.get('users', [])
         user = next(u for u in users if u['username'] == 'testadmin')
         stored = user.get('encrypted_api_key', '')
         self.assertNotEqual(stored, plaintext, "Plaintext must not be stored in config")
@@ -1063,7 +1067,7 @@ class TestUserClaudeDir(unittest.TestCase):
 
     def test_user_has_no_credentials_initially(self):
         """A brand-new user has no credentials."""
-        app_module.CONFIG['users'] = [
+        app_module.AUTH['users'] = [
             {'username': 'alice', 'password_hash': 'x', 'role': 'user'}
         ]
         self.assertFalse(app_module.user_has_claude_credentials('alice'))
@@ -1072,7 +1076,7 @@ class TestUserClaudeDir(unittest.TestCase):
         """user_has_claude_credentials returns True when user has a stored API key."""
         plaintext = 'sk-ant-api03-testapikey-AAAAA'
         encrypted = app_module.encrypt_api_key(plaintext, 'alice')
-        app_module.CONFIG['users'] = [
+        app_module.AUTH['users'] = [
             {'username': 'alice', 'password_hash': 'x', 'role': 'user',
              'encrypted_api_key': encrypted}
         ]
@@ -1081,7 +1085,7 @@ class TestUserClaudeDir(unittest.TestCase):
     def test_user_has_credentials_after_oauth_login(self):
         """user_has_claude_credentials returns True when credentials.json exists."""
         import pathlib
-        app_module.CONFIG['users'] = [
+        app_module.AUTH['users'] = [
             {'username': 'alice', 'password_hash': 'x', 'role': 'user'}
         ]
         # Simulate completed oauth login by dropping a credentials file
@@ -1099,7 +1103,7 @@ class TestUserClaudeDir(unittest.TestCase):
     def test_build_claude_env_sets_config_dir_in_multi_tenant(self):
         """build_claude_env sets CLAUDE_CONFIG_DIR when multi_tenant=True."""
         app_module.CONFIG['multi_tenant'] = True
-        app_module.CONFIG['users'] = [
+        app_module.AUTH['users'] = [
             {'username': 'alice', 'password_hash': 'x', 'role': 'user'}
         ]
         env = app_module.build_claude_env({}, username='alice')
@@ -1110,7 +1114,7 @@ class TestUserClaudeDir(unittest.TestCase):
     def test_build_claude_env_ignores_config_dir_in_solo_mode(self):
         """build_claude_env does NOT set CLAUDE_CONFIG_DIR when multi_tenant=False."""
         app_module.CONFIG['multi_tenant'] = False
-        app_module.CONFIG['users'] = [
+        app_module.AUTH['users'] = [
             {'username': 'alice', 'password_hash': 'x', 'role': 'user'}
         ]
         env = app_module.build_claude_env({}, username='alice')
@@ -1162,7 +1166,7 @@ class TestUserClaudeStatusRoutes(unittest.TestCase):
         """GET /api/user/claude-status returns credential_type=api_key when key is set."""
         plaintext = 'sk-ant-api03-testapikey-AAAAA'
         encrypted = app_module.encrypt_api_key(plaintext, 'testadmin')
-        users = app_module.CONFIG.get('users', [])
+        users = app_module.AUTH.get('users', [])
         for u in users:
             if u['username'] == 'testadmin':
                 u['encrypted_api_key'] = encrypted
@@ -1562,7 +1566,7 @@ class TestOnboarding(unittest.TestCase):
         """A new user with no credentials or favorites needs onboarding."""
         _enable_auth()
         # User with no onboarded flag, no API key, no favorites
-        app_module.CONFIG['users'] = [{
+        app_module.AUTH['users'] = [{
             'username': 'newuser',
             'password_hash': generate_password_hash('password123'),
             'role': 'user',
@@ -1581,7 +1585,7 @@ class TestOnboarding(unittest.TestCase):
     def test_onboarding_status_complete_when_onboarded(self):
         """A user marked as onboarded does not need onboarding."""
         _enable_auth()
-        app_module.CONFIG['users'] = [{
+        app_module.AUTH['users'] = [{
             'username': 'veteran',
             'password_hash': generate_password_hash('password123'),
             'role': 'user',
@@ -1604,7 +1608,7 @@ class TestOnboarding(unittest.TestCase):
     def test_onboarding_complete_marks_user(self):
         """POST /api/onboarding/complete sets onboarded=true on user record."""
         _enable_auth()
-        app_module.CONFIG['users'] = [{
+        app_module.AUTH['users'] = [{
             'username': 'newuser',
             'password_hash': generate_password_hash('password123'),
             'role': 'user',
@@ -1616,13 +1620,13 @@ class TestOnboarding(unittest.TestCase):
                                content_type='application/json',
                                headers=_csrf_headers(client))
         self.assertEqual(resp.status_code, 200)
-        user = next(u for u in app_module.CONFIG['users'] if u['username'] == 'newuser')
+        user = next(u for u in app_module.AUTH['users'] if u['username'] == 'newuser')
         self.assertTrue(user.get('onboarded'))
 
     def test_onboarding_complete_requires_csrf(self):
         """POST /api/onboarding/complete requires CSRF token."""
         _enable_auth()
-        app_module.CONFIG['users'] = [{
+        app_module.AUTH['users'] = [{
             'username': 'newuser',
             'password_hash': generate_password_hash('password123'),
             'role': 'user',
@@ -1824,7 +1828,7 @@ class TestLockoutAdminEndpoints(unittest.TestCase):
     def _setup_with_regular_user(self):
         _enable_auth()
         pw_hash = generate_password_hash('userpass1!')
-        app_module.CONFIG['users'].append(
+        app_module.AUTH['users'].append(
             {'username': 'regularuser', 'password_hash': pw_hash, 'role': 'user'}
         )
 
