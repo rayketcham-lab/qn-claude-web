@@ -46,14 +46,14 @@
             <div class="sidebar-header">
                 <h1>QN Code Assistant</h1>
                 <div class="sidebar-header-actions">
-                    <button id="btn-logout" class="btn-icon" title="Logout" style="display:none; font-size:0.7rem;">&#x23FB;</button>
+                    <button id="btn-logout" class="btn-icon" title="Logout">&#x23FB;</button>
                     <button id="btn-settings" class="btn-icon" title="Settings">&#9881;</button>
                     <span class="status-indicator" id="connection-status"></span>
                 </div>
             </div>
 
             <!-- Usage Display -->
-            <div id="usage-display" class="usage-bar" style="display:none">
+            <div id="usage-display" class="usage-bar">
                 <span id="usage-text">Loading usage...</span>
                 <span id="usage-reset" class="usage-reset"></span>
             </div>
@@ -71,11 +71,11 @@
                     <button id="nav-go" title="Navigate">&rarr;</button>
                 </div>
                 <div class="sidebar-sections scrollable">
-                    <div id="favorites-section" class="sidebar-section" style="display:none">
+                    <div id="favorites-section" class="sidebar-section">
                         <div class="section-label">Favorites</div>
                         <div id="favorites-list"></div>
                     </div>
-                    <div id="remote-hosts-section" class="sidebar-section" style="display:none">
+                    <div id="remote-hosts-section" class="sidebar-section">
                         <div class="section-label">Remote Hosts</div>
                         <div id="remote-hosts-list"></div>
                     </div>
@@ -860,16 +860,100 @@
         </div>
     </div>
 
+    <!-- Onboarding Wizard -->
+    <div id="onboarding-overlay" class="onboarding-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="ob-heading">
+        <div class="onboarding-card">
+            <div class="onboarding-header">
+                <div class="onboarding-logo" aria-hidden="true">&#128640;</div>
+                <div class="onboarding-header-text">
+                    <h2 id="ob-heading">Welcome to QN Code Assistant</h2>
+                    <p>Let's get you set up in a few quick steps.</p>
+                </div>
+            </div>
+
+            <div class="onboarding-progress" id="ob-progress" aria-hidden="true">
+                <div class="ob-dot active" data-step="1"></div>
+                <div class="ob-dot" data-step="2"></div>
+                <div class="ob-dot" data-step="3"></div>
+                <div class="ob-dot" data-step="4"></div>
+                <span class="ob-progress-label" id="ob-progress-label">Step 1 of 4</span>
+            </div>
+
+            <div class="onboarding-body">
+                <!-- Step 1: Welcome -->
+                <div class="onboarding-step active" id="ob-step-1" data-step="1">
+                    <p class="ob-step-title">Welcome!</p>
+                    <p class="ob-step-desc">
+                        QN Code Assistant gives you a full web interface for Claude Code — project browsing,
+                        persistent terminals, multi-user support, and more.
+                        <br><br>
+                        This wizard takes about a minute and gets you running immediately.
+                    </p>
+                </div>
+
+                <!-- Step 2: Connect Claude -->
+                <div class="onboarding-step" id="ob-step-2" data-step="2">
+                    <p class="ob-step-title">Connect Claude</p>
+                    <p class="ob-step-desc">How would you like to authenticate with Claude?</p>
+                    <div class="ob-cred-options">
+                        <div class="ob-cred-option" id="ob-opt-apikey" tabindex="0" role="button" aria-pressed="false">
+                            <div class="ob-cred-option-title">I have an API Key</div>
+                            <div class="ob-cred-option-desc">Paste your Anthropic API key from console.anthropic.com</div>
+                        </div>
+                        <div class="ob-cred-option" id="ob-opt-oauth" tabindex="0" role="button" aria-pressed="false">
+                            <div class="ob-cred-option-title">I have a Max / Pro subscription</div>
+                            <div class="ob-cred-option-desc">Log in with your Anthropic account via the terminal</div>
+                        </div>
+                    </div>
+                    <!-- API key entry -->
+                    <div class="ob-api-key-area" id="ob-apikey-area">
+                        <input type="password" id="ob-apikey-input" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
+                        <button class="ob-btn ob-btn-primary" id="ob-save-apikey">Save API Key</button>
+                        <div id="ob-apikey-status"></div>
+                    </div>
+                    <!-- OAuth instructions -->
+                    <div class="ob-oauth-area" id="ob-oauth-area">
+                        Open a terminal tab below, then run:<br><br>
+                        <code>claude login</code><br><br>
+                        Follow the browser prompt to complete OAuth. When done, come back and click <strong>Continue</strong>.
+                    </div>
+                    <div id="ob-cred-success" style="display:none;">
+                        <span class="ob-success-badge">&#10003; Credentials configured</span>
+                    </div>
+                </div>
+
+                <!-- Step 3: Choose a Project -->
+                <div class="onboarding-step" id="ob-step-3" data-step="3">
+                    <p class="ob-step-title">Choose a Project</p>
+                    <p class="ob-step-desc">Pick a project to get started. You can add more from the sidebar later.</p>
+                    <div class="ob-project-list" id="ob-project-list">
+                        <div style="padding: 20px; text-align: center; color: var(--text-secondary); font-size: 0.85rem;">Loading projects...</div>
+                    </div>
+                    <div id="ob-project-success" style="display:none;">
+                        <span class="ob-success-badge">&#10003; Project added to favorites</span>
+                    </div>
+                </div>
+
+                <!-- Step 4: Ready -->
+                <div class="onboarding-step" id="ob-step-4" data-step="4">
+                    <div class="ob-ready-icon">&#127881;</div>
+                    <p class="ob-step-title" style="text-align:center;">You're all set!</p>
+                    <p class="ob-ready-msg" id="ob-ready-msg">
+                        Opening your project in a terminal...
+                    </p>
+                </div>
+            </div>
+
+            <div class="onboarding-actions">
+                <button class="ob-btn-link" id="ob-skip-wizard">Skip setup</button>
+                <div class="spacer"></div>
+                <button class="ob-btn ob-btn-secondary" id="ob-back" style="display:none;">&larr; Back</button>
+                <button class="ob-btn ob-btn-primary" id="ob-next">Get Started</button>
+            </div>
+        </div>
+    </div>
+
     <script src="/static/js/app.js?v=1.5.1"></script>
-    <script>
-        // Unregister old service workers and register new one
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.getRegistrations().then(registrations => {
-                registrations.forEach(r => r.unregister());
-            }).then(() => {
-                navigator.serviceWorker.register('/static/sw.js?v=1.5.1').catch(() => {});
-            });
-        }
-    </script>
+    <script src="/static/js/sw-init.js?v=1.5.1"></script>
 </body>
 </html>
