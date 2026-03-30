@@ -165,6 +165,7 @@ class ClaudeCodeWeb {
             this.loadProjects();
             this.applyTheme(this.config.theme || 'dark');
             this.loadAgentLibrary();
+            this.checkOnboarding();
         });
         this.initTerminalWelcome();
         this.restorePersistentSession();
@@ -177,6 +178,7 @@ class ClaudeCodeWeb {
         if (this.elements.soundToggle) {
             this.elements.soundToggle.checked = this._soundEnabled;
         }
+
     }
 
     async checkServerStatus() {
@@ -4159,6 +4161,374 @@ class ClaudeCodeWeb {
             return isoString;
         }
     }
+
+    // ============== Onboarding Wizard ==============
+    // All dynamic HTML uses _escapeHtml() on server-supplied data — XSS safe.
+
+    async checkOnboarding() {
+        try {
+            const resp = await fetch('/api/onboarding/status');
+            if (!resp.ok) return;
+            const data = await resp.json();
+            if (data.needs_onboarding) {
+                this._obStatus = data;
+                this.showOnboardingWizard();
+            }
+        } catch (e) {
+            console.error('Onboarding check failed:', e);
+        }
+    }
+
+    showOnboardingWizard() {
+        this._obStep = 1;
+        this._obSelectedProject = null;
+        this._obCredSaved = false;
+
+        const overlay = document.getElementById('onboarding-overlay');
+        if (!overlay) return;
+        overlay.classList.remove('hidden');
+        this._obRenderStep(1);
+        this._obSetupListeners();
+    }
+
+    closeOnboardingWizard() {
+        const overlay = document.getElementById('onboarding-overlay');
+        if (overlay) overlay.classList.add('hidden');
+    }
+
+    _obSetupListeners() {
+        // Guard: only attach once
+        if (this._obListenersAttached) return;
+        this._obListenersAttached = true;
+
+        const nextBtn = document.getElementById('ob-next');
+        const backBtn = document.getElementById('ob-back');
+        const skipBtn = document.getElementById('ob-skip-wizard');
+
+        nextBtn.addEventListener('click', () => this._obNext());
+        backBtn.addEventListener('click', () => this._obPrev());
+        skipBtn.addEventListener('click', () => this._obSkip());
+
+        // Credential option selection (event delegation on parent)
+        const credOptions = document.querySelector('.ob-cred-options');
+        if (credOptions) {
+            credOptions.addEventListener('click', (e) => {
+                const opt = e.target.closest('.ob-cred-option');
+                if (!opt) return;
+                this._obSelectCredOption(opt.id === 'ob-opt-apikey' ? 'apikey' : 'oauth');
+            });
+            credOptions.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    const opt = e.target.closest('.ob-cred-option');
+                    if (!opt) return;
+                    e.preventDefault();
+                    this._obSelectCredOption(opt.id === 'ob-opt-apikey' ? 'apikey' : 'oauth');
+                }
+            });
+        }
+
+        // Save API key button
+        const saveKeyBtn = document.getElementById('ob-save-apikey');
+        if (saveKeyBtn) {
+            saveKeyBtn.addEventListener('click', () => this._obSaveApiKey());
+        }
+
+        // API key input — allow Enter to submit
+        const keyInput = document.getElementById('ob-apikey-input');
+        if (keyInput) {
+            keyInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') this._obSaveApiKey();
+            });
+        }
+    }
+
+    _obRenderStep(step) {
+        this._obStep = step;
+
+        // Show/hide step panels
+        document.querySelectorAll('.onboarding-step').forEach(el => {
+            el.classList.toggle('active', parseInt(el.dataset.step) === step);
+        });
+
+        // Update progress dots
+        document.querySelectorAll('.ob-dot').forEach(dot => {
+            const s = parseInt(dot.dataset.step);
+            dot.classList.toggle('active', s === step);
+            dot.classList.toggle('done', s < step);
+        });
+
+        const label = document.getElementById('ob-progress-label');
+        if (label) label.textContent = 'Step ' + step + ' of 4';
+
+        // Next button label
+        const nextBtn = document.getElementById('ob-next');
+        const backBtn = document.getElementById('ob-back');
+
+        if (step === 1) {
+            nextBtn.textContent = 'Get Started';
+            backBtn.style.display = 'none';
+        } else if (step === 4) {
+            nextBtn.textContent = 'Open Terminal';
+            backBtn.style.display = '';
+        } else {
+            nextBtn.textContent = 'Continue';
+            backBtn.style.display = '';
+        }
+
+        // Step-specific initialisation
+        if (step === 2) {
+            this._obInitCredStep();
+        } else if (step === 3) {
+            this._obLoadProjectList();
+        }
+    }
+
+    _obInitCredStep() {
+        // If credentials were already configured before wizard opened, show success
+        if (this._obStatus && this._obStatus.steps && this._obStatus.steps.credentials) {
+            const s = document.getElementById('ob-cred-success');
+            if (s) s.style.display = '';
+        }
+    }
+
+    _obSelectCredOption(type) {
+        const apiOpt = document.getElementById('ob-opt-apikey');
+        const oauthOpt = document.getElementById('ob-opt-oauth');
+        const apikeyArea = document.getElementById('ob-apikey-area');
+        const oauthArea = document.getElementById('ob-oauth-area');
+
+        if (type === 'apikey') {
+            apiOpt.classList.add('selected');
+            apiOpt.setAttribute('aria-pressed', 'true');
+            oauthOpt.classList.remove('selected');
+            oauthOpt.setAttribute('aria-pressed', 'false');
+            apikeyArea.classList.add('visible');
+            oauthArea.classList.remove('visible');
+            document.getElementById('ob-apikey-input').focus();
+        } else {
+            oauthOpt.classList.add('selected');
+            oauthOpt.setAttribute('aria-pressed', 'true');
+            apiOpt.classList.remove('selected');
+            apiOpt.setAttribute('aria-pressed', 'false');
+            oauthArea.classList.add('visible');
+            apikeyArea.classList.remove('visible');
+        }
+    }
+
+    async _obSaveApiKey() {
+        const input = document.getElementById('ob-apikey-input');
+        const statusEl = document.getElementById('ob-apikey-status');
+        const saveBtn = document.getElementById('ob-save-apikey');
+        const key = input ? input.value.trim() : '';
+
+        if (!key) {
+            statusEl.textContent = 'Please enter an API key.';
+            statusEl.style.color = 'var(--error)';
+            statusEl.style.fontSize = '0.8rem';
+            return;
+        }
+
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+        statusEl.textContent = '';
+
+        try {
+            const csrfResp = await fetch('/api/csrf-token');
+            const { csrf_token } = await csrfResp.json();
+
+            const resp = await fetch('/api/user/api-key', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrf_token,
+                },
+                body: JSON.stringify({ api_key: key }),
+            });
+            const result = await resp.json();
+
+            if (resp.ok && result.success) {
+                this._obCredSaved = true;
+                input.value = '';
+                const successEl = document.getElementById('ob-cred-success');
+                if (successEl) successEl.style.display = '';
+                statusEl.textContent = '';
+                saveBtn.textContent = 'Saved!';
+                saveBtn.disabled = true;
+            } else {
+                statusEl.textContent = result.error || 'Failed to save key';
+                statusEl.style.color = 'var(--error)';
+                statusEl.style.fontSize = '0.8rem';
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Save API Key';
+            }
+        } catch (e) {
+            statusEl.textContent = 'Network error — please try again.';
+            statusEl.style.color = 'var(--error)';
+            statusEl.style.fontSize = '0.8rem';
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save API Key';
+        }
+    }
+
+    async _obLoadProjectList() {
+        const list = document.getElementById('ob-project-list');
+        if (!list) return;
+
+        // Keep existing selection if user navigated back
+        if (this._obSelectedProject) return;
+
+        // Use DOM instead of innerHTML for the loading message
+        list.textContent = '';
+        const loading = document.createElement('div');
+        loading.style.cssText = 'padding:20px;text-align:center;color:var(--text-secondary);font-size:0.85rem;';
+        loading.textContent = 'Loading projects...';
+        list.appendChild(loading);
+
+        try {
+            const resp = await fetch('/api/projects');
+            const data = await resp.json();
+            const projects = data.projects || [];
+
+            list.textContent = '';
+
+            if (projects.length === 0) {
+                const empty = document.createElement('div');
+                empty.style.cssText = 'padding:20px;text-align:center;color:var(--text-secondary);font-size:0.85rem;';
+                empty.textContent = 'No projects found. You can add projects from the sidebar.';
+                list.appendChild(empty);
+                return;
+            }
+
+            projects.forEach(p => {
+                const item = document.createElement('div');
+                item.className = 'ob-project-item';
+                item.setAttribute('data-path', p.path);
+                item.setAttribute('data-name', p.name);
+                item.setAttribute('tabindex', '0');
+                item.setAttribute('role', 'button');
+
+                const nameEl = document.createElement('div');
+                nameEl.className = 'ob-project-item-name';
+                nameEl.textContent = p.name;
+
+                const pathEl = document.createElement('div');
+                pathEl.className = 'ob-project-item-path';
+                pathEl.textContent = p.path;
+
+                const wrapper = document.createElement('div');
+                wrapper.appendChild(nameEl);
+                wrapper.appendChild(pathEl);
+                item.appendChild(wrapper);
+                list.appendChild(item);
+            });
+
+            // Delegated selection handler on list container
+            list.addEventListener('click', (e) => {
+                const item = e.target.closest('.ob-project-item');
+                if (!item) return;
+                list.querySelectorAll('.ob-project-item').forEach(i => i.classList.remove('selected'));
+                item.classList.add('selected');
+                this._obSelectedProject = { path: item.dataset.path, name: item.dataset.name };
+            });
+            list.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    const item = e.target.closest('.ob-project-item');
+                    if (!item) return;
+                    e.preventDefault();
+                    list.querySelectorAll('.ob-project-item').forEach(i => i.classList.remove('selected'));
+                    item.classList.add('selected');
+                    this._obSelectedProject = { path: item.dataset.path, name: item.dataset.name };
+                }
+            });
+        } catch (e) {
+            list.textContent = '';
+            const errEl = document.createElement('div');
+            errEl.style.cssText = 'padding:20px;text-align:center;color:var(--error);font-size:0.85rem;';
+            errEl.textContent = 'Failed to load projects.';
+            list.appendChild(errEl);
+        }
+    }
+
+    async _obNext() {
+        const step = this._obStep;
+
+        if (step === 3 && this._obSelectedProject) {
+            // Persist the selected project as a favorite before advancing
+            await this._obSaveFavorite(this._obSelectedProject);
+        }
+
+        if (step === 4) {
+            // Final step — complete onboarding and launch
+            await this._obFinish();
+            return;
+        }
+
+        this._obRenderStep(step + 1);
+    }
+
+    _obPrev() {
+        if (this._obStep > 1) {
+            this._obRenderStep(this._obStep - 1);
+        }
+    }
+
+    async _obSkip() {
+        await this._obMarkComplete();
+        this.closeOnboardingWizard();
+    }
+
+    async _obSaveFavorite(project) {
+        try {
+            const favorites = [...(this.config.favorites || [])];
+            // Avoid duplicates
+            if (favorites.some(f => f.path === project.path)) return;
+            favorites.push({ name: project.name, path: project.path });
+
+            const csrfResp = await fetch('/api/csrf-token');
+            const { csrf_token } = await csrfResp.json();
+
+            const resp = await fetch('/api/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf_token },
+                body: JSON.stringify({ favorites }),
+            });
+            const result = await resp.json();
+            if (result.success) {
+                this.config.favorites = favorites;
+                this.renderFavoritesSidebar();
+                const s = document.getElementById('ob-project-success');
+                if (s) s.style.display = '';
+            }
+        } catch (e) {
+            console.error('Failed to save favorite:', e);
+        }
+    }
+
+    async _obMarkComplete() {
+        try {
+            const csrfResp = await fetch('/api/csrf-token');
+            const { csrf_token } = await csrfResp.json();
+            await fetch('/api/onboarding/complete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf_token },
+                body: JSON.stringify({}),
+            });
+        } catch (e) {
+            console.error('Failed to mark onboarding complete:', e);
+        }
+    }
+
+    async _obFinish() {
+        await this._obMarkComplete();
+        this.closeOnboardingWizard();
+
+        // Auto-launch terminal in selected project
+        if (this._obSelectedProject) {
+            this.selectProject(this._obSelectedProject.path);
+            this.openNewTerminal();
+        }
+    }
+
 }
 
 // Initialize when DOM is ready

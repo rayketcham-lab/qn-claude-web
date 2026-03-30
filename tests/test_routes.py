@@ -1531,5 +1531,109 @@ class TestHostsBatchHealthEndpoint(unittest.TestCase):
         self.assertEqual(host_ids, {'s1', 's2'})
 
 
+# ============== Onboarding Wizard Tests ==============
+
+
+class TestOnboarding(unittest.TestCase):
+    """Verify onboarding status and completion endpoints."""
+
+    def setUp(self):
+        self._orig_config = _snapshot_config()
+
+    def tearDown(self):
+        _restore_config(self._orig_config)
+
+    def test_onboarding_status_requires_auth(self):
+        """GET /api/onboarding/status returns 401 when not logged in."""
+        _enable_auth()
+        with flask_app.test_client() as client:
+            resp = client.get('/api/onboarding/status')
+        self.assertEqual(resp.status_code, 401)
+
+    def _set_session(self, client, username='newuser', role='user'):
+        """Set session state directly for testing."""
+        with client.session_transaction() as sess:
+            sess['authenticated'] = True
+            sess['username'] = username
+            sess['role'] = role
+            sess['login_time'] = datetime.utcnow().isoformat()
+
+    def test_onboarding_status_needs_onboarding_new_user(self):
+        """A new user with no credentials or favorites needs onboarding."""
+        _enable_auth()
+        # User with no onboarded flag, no API key, no favorites
+        app_module.CONFIG['users'] = [{
+            'username': 'newuser',
+            'password_hash': generate_password_hash('password123'),
+            'role': 'user',
+        }]
+        app_module.CONFIG['favorites'] = []
+        with flask_app.test_client() as client:
+            self._set_session(client, username='newuser', role='user')
+            resp = client.get('/api/onboarding/status')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data['needs_onboarding'])
+        self.assertTrue(data['steps']['account'])
+        self.assertFalse(data['steps']['credentials'])
+        self.assertFalse(data['steps']['project'])
+
+    def test_onboarding_status_complete_when_onboarded(self):
+        """A user marked as onboarded does not need onboarding."""
+        _enable_auth()
+        app_module.CONFIG['users'] = [{
+            'username': 'veteran',
+            'password_hash': generate_password_hash('password123'),
+            'role': 'user',
+            'onboarded': True,
+        }]
+        with flask_app.test_client() as client:
+            self._set_session(client, username='veteran', role='user')
+            resp = client.get('/api/onboarding/status')
+        data = resp.get_json()
+        self.assertFalse(data['needs_onboarding'])
+
+    def test_onboarding_status_solo_mode(self):
+        """Solo mode (auth disabled) always returns needs_onboarding=false."""
+        _disable_auth()
+        with flask_app.test_client() as client:
+            resp = client.get('/api/onboarding/status')
+        data = resp.get_json()
+        self.assertFalse(data['needs_onboarding'])
+
+    def test_onboarding_complete_marks_user(self):
+        """POST /api/onboarding/complete sets onboarded=true on user record."""
+        _enable_auth()
+        app_module.CONFIG['users'] = [{
+            'username': 'newuser',
+            'password_hash': generate_password_hash('password123'),
+            'role': 'user',
+        }]
+        with flask_app.test_client() as client:
+            self._set_session(client, username='newuser', role='user')
+            resp = client.post('/api/onboarding/complete',
+                               data='{}',
+                               content_type='application/json',
+                               headers=_csrf_headers(client))
+        self.assertEqual(resp.status_code, 200)
+        user = next(u for u in app_module.CONFIG['users'] if u['username'] == 'newuser')
+        self.assertTrue(user.get('onboarded'))
+
+    def test_onboarding_complete_requires_csrf(self):
+        """POST /api/onboarding/complete requires CSRF token."""
+        _enable_auth()
+        app_module.CONFIG['users'] = [{
+            'username': 'newuser',
+            'password_hash': generate_password_hash('password123'),
+            'role': 'user',
+        }]
+        with flask_app.test_client() as client:
+            self._set_session(client, username='newuser', role='user')
+            resp = client.post('/api/onboarding/complete',
+                               data='{}',
+                               content_type='application/json')
+        self.assertEqual(resp.status_code, 403)
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

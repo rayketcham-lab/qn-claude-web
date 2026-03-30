@@ -3716,6 +3716,105 @@ def api_user_claude_logout():
         return jsonify({'error': 'Failed to remove credential directory'}), 500
 
 
+# ============== Onboarding API ==============
+
+@app.route('/api/onboarding/status')
+@login_required
+def api_onboarding_status():
+    """Return onboarding state for the current user.
+
+    Response::
+
+        {
+          "needs_onboarding": true,
+          "steps": {
+            "account": true,
+            "credentials": false,
+            "project": false
+          }
+        }
+
+    ``needs_onboarding`` is true when the user has not yet completed
+    onboarding (``onboarded`` flag absent or false on their user record)
+    AND at least one step is incomplete.  In solo/auth-disabled mode,
+    returns ``{"needs_onboarding": false, ...}`` immediately.
+    """
+    # Solo mode — no per-user onboarding needed
+    if not CONFIG.get('auth', {}).get('enabled'):
+        return jsonify({
+            'needs_onboarding': False,
+            'steps': {'account': True, 'credentials': True, 'project': True},
+        })
+
+    username = session.get('username', '')
+    if not username:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    users = CONFIG.get('users', [])
+    user_record = next((u for u in users if u['username'] == username), None)
+    if user_record is None:
+        return jsonify({'error': 'User record not found'}), 404
+
+    # If user has already completed onboarding, short-circuit
+    if user_record.get('onboarded'):
+        return jsonify({
+            'needs_onboarding': False,
+            'steps': {'account': True, 'credentials': True, 'project': True},
+        })
+
+    # Check credentials (API key or OAuth)
+    has_credentials = get_user_api_key(username) is not None
+    if not has_credentials:
+        try:
+            user_claude_dir = get_user_claude_dir(username)
+            credentials_file = user_claude_dir / 'credentials'
+            has_credentials = credentials_file.exists()
+        except Exception:
+            pass
+
+    # Check favorites
+    favorites = CONFIG.get('favorites', [])
+    has_project = len(favorites) > 0
+
+    steps = {
+        'account': True,
+        'credentials': has_credentials,
+        'project': has_project,
+    }
+    needs_onboarding = not (steps['credentials'] and steps['project'])
+
+    return jsonify({'needs_onboarding': needs_onboarding, 'steps': steps})
+
+
+@app.route('/api/onboarding/complete', methods=['POST'])
+@login_required
+@csrf_protect
+def api_onboarding_complete():
+    """Mark onboarding as complete for the current user.
+
+    Sets ``onboarded: true`` on the user record and persists config.
+    """
+    # Solo mode — nothing to persist
+    if not CONFIG.get('auth', {}).get('enabled'):
+        return jsonify({'success': True})
+
+    username = session.get('username', '')
+    if not username:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    users = CONFIG.get('users', [])
+    user_record = next((u for u in users if u['username'] == username), None)
+    if user_record is None:
+        return jsonify({'error': 'User record not found'}), 404
+
+    user_record['onboarded'] = True
+    CONFIG['users'] = users
+    save_config(CONFIG)
+
+    logger.info("Onboarding completed for user %s", username)
+    return jsonify({'success': True})
+
+
 # ============== Usage & Terminals API ==============
 
 @app.route('/api/usage')

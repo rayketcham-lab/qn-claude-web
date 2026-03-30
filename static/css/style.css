@@ -2807,3 +2807,585 @@ html, body {
     .rw-method-card { padding: 12px; }
     .rw-method-icon { font-size: 1.3rem; width: 30px; }
 }
+
+/* ============== CSP inline-style replacements ============== */
+
+/* Elements that start hidden and are shown by JS via style.display */
+#btn-logout { display: none; font-size: 0.7rem; }
+#usage-display { display: none; }
+#favorites-section { display: none; }
+#remote-hosts-section { display: none; }
+#btn-init-wizard { display: none; }
+#add-favorite-form { display: none; }
+#add-user-form { display: none; }
+#add-custom-agent-form { display: none; }
+#wiz-settings-options { display: none; }
+#wiz-create { display: none; }
+#rw-manual-section { display: none; }
+#rw-mount-section { display: none; }
+#rw-summary { display: none; }
+#rw-save { display: none; }
+
+/* Elements with visibility:hidden initial state (JS uses style.visibility) */
+#wiz-prev { visibility: hidden; }
+#rw-prev { visibility: hidden; }
+
+/* Refresh projects button */
+#btn-refresh-projects {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.85rem;
+    padding: 0 4px;
+    vertical-align: middle;
+}
+
+/* Options panel — agents summary "no agents" label */
+.options-agents-no-selection {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+}
+
+/* Options panel — open agents modal button */
+#btn-open-agents-modal {
+    width: 100%;
+    margin-top: 8px;
+}
+
+/* Settings general — section heading */
+.settings-section-heading {
+    margin: 16px 0 8px;
+    font-size: 0.9rem;
+}
+
+/* Settings general — path restriction hint */
+.settings-path-hint {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+/* Inline checkbox inputs */
+.inline-checkbox {
+    width: auto;
+    margin-right: 6px;
+}
+
+/* Auth section heading */
+.settings-auth-heading {
+    margin-bottom: 12px;
+    font-size: 0.9rem;
+}
+
+/* Auth status display */
+#auth-status-display {
+    margin-bottom: 12px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+/* Save Auth button spacing */
+#btn-save-auth {
+    margin-bottom: 24px;
+}
+
+/* SSL hint text */
+.settings-ssl-hint {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+}
+
+/* Add-X buttons with top margin */
+.btn-sm-mt {
+    margin-top: 8px;
+}
+
+/* Agents settings description */
+.settings-agents-desc {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin: 0 0 12px;
+}
+
+/* Custom agents header row */
+.custom-agents-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+/* Custom agents section heading */
+.custom-agents-heading {
+    font-size: 0.9rem;
+    margin: 0;
+    color: var(--text-secondary);
+}
+
+/* Save custom agents button */
+#btn-save-agents {
+    margin-top: 12px;
+    width: 100%;
+}
+
+/* Shortcuts modal width */
+.shortcuts-modal {
+    width: 450px;
+}
+
+/* Changelog modal size */
+.changelog-modal {
+    width: 560px;
+    max-height: 80vh;
+}
+
+/* Changelog body scrollable */
+#changelog-body {
+    overflow-y: auto;
+}
+
+/* Changelog loading state */
+.changelog-loading {
+    color: var(--text-secondary);
+    padding: 20px;
+    text-align: center;
+}
+
+/* Agents modal — Sentinel badge */
+.agents-sentinel-badge {
+    margin-left: 6px;
+    background: var(--claude-orange);
+    color: #fff;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 0.7rem;
+}
+
+/* Agents modal — save/close row */
+.agents-modal-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+/* Agents modal save button fills row */
+#btn-save-agents-modal {
+    flex: 1;
+}
+
+/* Wizard step 5 — settings checkbox field */
+.wiz-settings-field {
+    margin-top: 12px;
+}
+
+/* Remote wizard step 2 — side-by-side fields */
+.rw-connection-row {
+    display: flex;
+    gap: 12px;
+}
+
+.rw-connection-row .rw-username-field {
+    flex: 1;
+}
+
+.rw-connection-row .rw-port-field {
+    width: 100px;
+}
+
+/* Remote wizard — password hint */
+.rw-password-hint {
+    color: var(--text-secondary);
+    font-weight: normal;
+    font-size: 0.75rem;
+}
+
+/* Remote wizard — manual copy section */
+.rw-manual-hint {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin: 12px 0 8px;
+}
+
+/* Remote wizard — manual copy button row */
+.rw-manual-actions {
+    display: flex;
+    gap: 8px;
+}
+
+/* Autonomous mode — extra options-field spacing */
+.options-field-mt {
+    margin-top: 12px;
+}
+
+/* ============== Onboarding Wizard ============== */
+
+.onboarding-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    backdrop-filter: blur(6px);
+}
+
+.onboarding-overlay.hidden {
+    display: none;
+}
+
+.onboarding-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    width: 580px;
+    max-width: 95vw;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+    animation: ob-slide-in 0.3s ease;
+}
+
+@keyframes ob-slide-in {
+    from { opacity: 0; transform: translateY(-20px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.onboarding-header {
+    padding: 24px 28px 0;
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+}
+
+.onboarding-logo {
+    font-size: 2rem;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.onboarding-header-text h2 {
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 4px;
+}
+
+.onboarding-header-text p {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin: 0;
+    line-height: 1.5;
+}
+
+.onboarding-progress {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 20px 28px 0;
+}
+
+.ob-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--border-color);
+    transition: background 0.2s, width 0.2s;
+    flex-shrink: 0;
+}
+
+.ob-dot.active {
+    background: var(--claude-orange);
+    width: 20px;
+    border-radius: 4px;
+}
+
+.ob-dot.done {
+    background: var(--success);
+}
+
+.ob-progress-label {
+    margin-left: auto;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.onboarding-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 28px;
+}
+
+.onboarding-step {
+    display: none;
+    animation: ob-fade-in 0.25s ease;
+}
+
+.onboarding-step.active {
+    display: block;
+}
+
+@keyframes ob-fade-in {
+    from { opacity: 0; transform: translateX(12px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
+.ob-step-title {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 8px;
+}
+
+.ob-step-desc {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin: 0 0 20px;
+    line-height: 1.55;
+}
+
+/* Credential option cards */
+.ob-cred-options {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.ob-cred-option {
+    border: 2px solid var(--border-color);
+    border-radius: 10px;
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    background: var(--bg-tertiary);
+}
+
+.ob-cred-option:hover {
+    border-color: var(--claude-orange);
+    background: rgba(230, 126, 34, 0.06);
+}
+
+.ob-cred-option.selected {
+    border-color: var(--claude-orange);
+    background: rgba(230, 126, 34, 0.1);
+}
+
+.ob-cred-option-title {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    margin-bottom: 3px;
+}
+
+.ob-cred-option-desc {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+/* API key input area */
+.ob-api-key-area {
+    display: none;
+    margin-top: 14px;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.ob-api-key-area.visible {
+    display: flex;
+}
+
+.ob-api-key-area input[type="password"],
+.ob-api-key-area input[type="text"] {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.85rem;
+    padding: 10px 12px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.ob-api-key-area input:focus {
+    outline: none;
+    border-color: var(--claude-orange);
+}
+
+/* OAuth instructions box */
+.ob-oauth-area {
+    display: none;
+    margin-top: 14px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 14px 16px;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+
+.ob-oauth-area.visible {
+    display: block;
+}
+
+.ob-oauth-area code {
+    background: rgba(255,255,255,0.08);
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    color: var(--text-primary);
+}
+
+/* Step success badge */
+.ob-success-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(74, 222, 128, 0.12);
+    border: 1px solid var(--success);
+    color: var(--success);
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-top: 12px;
+}
+
+/* Project picker list */
+.ob-project-list {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+    max-height: 240px;
+    overflow-y: auto;
+    margin-bottom: 12px;
+}
+
+.ob-project-item {
+    padding: 10px 14px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: background 0.12s;
+}
+
+.ob-project-item:last-child {
+    border-bottom: none;
+}
+
+.ob-project-item:hover {
+    background: rgba(255,255,255,0.04);
+}
+
+.ob-project-item.selected {
+    background: rgba(230, 126, 34, 0.1);
+    border-left: 3px solid var(--claude-orange);
+}
+
+.ob-project-item-name {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.ob-project-item-path {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+/* Ready screen */
+.ob-ready-icon {
+    font-size: 3rem;
+    text-align: center;
+    margin-bottom: 12px;
+}
+
+.ob-ready-msg {
+    text-align: center;
+    font-size: 1rem;
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+
+/* Action row */
+.onboarding-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 28px 24px;
+    border-top: 1px solid var(--border-color);
+}
+
+.onboarding-actions .spacer {
+    flex: 1;
+}
+
+.ob-btn {
+    padding: 9px 20px;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    transition: opacity 0.15s, background 0.15s;
+}
+
+.ob-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.ob-btn-primary {
+    background: var(--claude-orange);
+    color: #fff;
+}
+
+.ob-btn-primary:hover:not(:disabled) {
+    background: var(--accent-hover);
+}
+
+.ob-btn-secondary {
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+}
+
+.ob-btn-secondary:hover:not(:disabled) {
+    color: var(--text-primary);
+    border-color: var(--text-secondary);
+}
+
+.ob-btn-link {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    padding: 4px 8px;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.ob-btn-link:hover {
+    color: var(--text-primary);
+}
+
+@media (max-width: 640px) {
+    .onboarding-card {
+        max-height: 100vh;
+        border-radius: 12px 12px 0 0;
+        align-self: flex-end;
+    }
+    .onboarding-actions {
+        flex-wrap: wrap;
+    }
+}
+
