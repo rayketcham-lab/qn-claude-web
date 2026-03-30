@@ -44,7 +44,7 @@ class IntegrationTestBase(unittest.TestCase):
         """Issue an HTTP request and return a Response namedtuple.
 
         Args:
-            path: URL path (e.g. '/api/status'). Joined with BASE_URL.
+            path: URL path (e.g. '/api/v1/status'). Joined with BASE_URL.
             method: HTTP method (GET, POST, etc.).
             data: Dict to send as JSON body (POST only).
             headers: Optional dict of extra headers.
@@ -92,8 +92,8 @@ class TestPublicEndpoints(IntegrationTestBase):
     """Test endpoints that should be accessible without authentication."""
 
     def test_auth_status_returns_json_with_auth_enabled(self):
-        """/api/auth/status returns JSON with auth_enabled field."""
-        resp = self._request('/api/auth/status')
+        """/api/v1/auth/status returns JSON with auth_enabled field."""
+        resp = self._request('/api/v1/auth/status')
         self.assertEqual(resp.status, 200)
         data = json.loads(resp.body)
         self.assertIn('auth_enabled', data)
@@ -109,10 +109,10 @@ class TestPublicEndpoints(IntegrationTestBase):
         if resp.status == 200:
             self.assertIn('<form', resp.body.lower())
 
-    def test_api_status_returns_version_info(self):
-        """/api/status returns version info (200 if no auth, 401 if auth enabled)."""
-        resp = self._request('/api/status')
-        self.assertIn(resp.status, (200, 401))
+    def test_api_health_returns_version_info(self):
+        """/api/health returns version info (always 200, no auth required)."""
+        resp = self._request('/api/health')
+        self.assertIn(resp.status, (200,))
         if resp.status == 200:
             data = json.loads(resp.body)
             self.assertIn('version', data)
@@ -128,7 +128,7 @@ class TestSecurityHeaders(IntegrationTestBase):
     def setUpClass(cls):
         super().setUpClass()
         # Fetch a public endpoint once and reuse headers for all tests
-        url = cls.BASE_URL + '/api/auth/status'
+        url = cls.BASE_URL + '/api/v1/auth/status'
         try:
             resp = urllib.request.urlopen(url, timeout=15)
             cls._headers = resp.headers
@@ -192,22 +192,22 @@ class TestAuthEnforcement(IntegrationTestBase):
     """Protected endpoints must return 401 or 302 when not authenticated."""
 
     PROTECTED_ENDPOINTS = [
-        '/api/files?path=/opt',
-        '/api/files/read?path=/opt/test',
-        '/api/git/status?path=/opt',
-        '/api/git/diff?path=/opt',
-        '/api/config',
-        '/api/agents/library',
-        '/api/changelog',
-        '/api/usage',
-        '/api/terminals',
+        '/api/v1/files?path=/opt',
+        '/api/v1/files/read?path=/opt/test',
+        '/api/v1/git/status?path=/opt',
+        '/api/v1/git/diff?path=/opt',
+        '/api/v1/config',
+        '/api/v1/agents/library',
+        '/api/v1/changelog',
+        '/api/v1/usage',
+        '/api/v1/terminals',
     ]
 
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
         # Check if auth is even enabled — if not, skip this entire class
-        url = cls.BASE_URL + '/api/auth/status'
+        url = cls.BASE_URL + '/api/v1/auth/status'
         try:
             resp = urllib.request.urlopen(url, timeout=15)
             data = json.loads(resp.read().decode('utf-8'))
@@ -228,34 +228,34 @@ class TestAuthEnforcement(IntegrationTestBase):
         )
 
     def test_files_endpoint_requires_auth(self):
-        self._assert_auth_required('/api/files?path=/opt')
+        self._assert_auth_required('/api/v1/files?path=/opt')
 
     def test_files_read_endpoint_requires_auth(self):
-        self._assert_auth_required('/api/files/read?path=/opt/test')
+        self._assert_auth_required('/api/v1/files/read?path=/opt/test')
 
     def test_git_status_endpoint_requires_auth(self):
-        self._assert_auth_required('/api/git/status?path=/opt')
+        self._assert_auth_required('/api/v1/git/status?path=/opt')
 
     def test_git_diff_endpoint_requires_auth(self):
-        self._assert_auth_required('/api/git/diff?path=/opt')
+        self._assert_auth_required('/api/v1/git/diff?path=/opt')
 
     def test_config_endpoint_requires_auth(self):
-        self._assert_auth_required('/api/config')
+        self._assert_auth_required('/api/v1/config')
 
     def test_agents_library_endpoint_requires_auth(self):
-        self._assert_auth_required('/api/agents/library')
+        self._assert_auth_required('/api/v1/agents/library')
 
     def test_changelog_endpoint_requires_auth(self):
-        self._assert_auth_required('/api/changelog')
+        self._assert_auth_required('/api/v1/changelog')
 
     def test_usage_endpoint_requires_auth(self):
-        self._assert_auth_required('/api/usage')
+        self._assert_auth_required('/api/v1/usage')
 
     def test_terminals_endpoint_requires_auth(self):
-        self._assert_auth_required('/api/terminals')
+        self._assert_auth_required('/api/v1/terminals')
 
     def test_tmux_sessions_endpoint_requires_auth(self):
-        self._assert_auth_required('/api/tmux/sessions')
+        self._assert_auth_required('/api/v1/tmux/sessions')
 
 
 # ===================================================================
@@ -349,7 +349,7 @@ class TestAuthenticatedEndpoints(IntegrationTestBase):
 
     def test_api_status_returns_version(self):
         """GET /api/status returns 200 with 'version' field."""
-        resp = self._auth_request('/api/status')
+        resp = self._auth_request('/api/v1/status')
         self.assertEqual(resp.status, 200)
         data = json.loads(resp.body)
         self.assertIn('version', data)
@@ -357,14 +357,14 @@ class TestAuthenticatedEndpoints(IntegrationTestBase):
 
     def test_api_config_returns_json(self):
         """GET /api/config returns 200 with JSON body."""
-        resp = self._auth_request('/api/config')
+        resp = self._auth_request('/api/v1/config')
         self.assertEqual(resp.status, 200)
         data = json.loads(resp.body)
         self.assertIsInstance(data, dict)
 
     def test_api_agents_library_returns_agents_list(self):
         """GET /api/agents/library returns 200 with agents list."""
-        resp = self._auth_request('/api/agents/library')
+        resp = self._auth_request('/api/v1/agents/library')
         self.assertEqual(resp.status, 200)
         data = json.loads(resp.body)
         self.assertIn('agents', data)
@@ -372,7 +372,7 @@ class TestAuthenticatedEndpoints(IntegrationTestBase):
 
     def test_api_changelog_returns_content(self):
         """GET /api/changelog returns 200 with content."""
-        resp = self._auth_request('/api/changelog')
+        resp = self._auth_request('/api/v1/changelog')
         self.assertEqual(resp.status, 200)
         data = json.loads(resp.body)
         self.assertIn('content', data)

@@ -174,7 +174,7 @@ class TestAuthRoutes(unittest.TestCase):
         _disable_auth()
         with flask_app.test_client() as client:
             resp = client.post(
-                '/api/auth/setup',
+                '/api/v1/auth/setup',
                 data=json.dumps({'username': 'newadmin', 'password': 'securepass1'}),
                 content_type='application/json',
             )
@@ -190,7 +190,7 @@ class TestAuthRoutes(unittest.TestCase):
         _disable_auth()
         with flask_app.test_client() as client:
             resp = client.post(
-                '/api/auth/setup',
+                '/api/v1/auth/setup',
                 data=json.dumps({'username': 'admin', 'password': 'short'}),
                 content_type='application/json',
             )
@@ -204,7 +204,7 @@ class TestAuthRoutes(unittest.TestCase):
         with flask_app.test_client() as client:
             # No login — unauthenticated request
             resp = client.post(
-                '/api/auth/setup',
+                '/api/v1/auth/setup',
                 data=json.dumps({'username': 'hacker', 'password': 'newpassword1'}),
                 content_type='application/json',
             )
@@ -235,7 +235,7 @@ class TestAuthRoutes(unittest.TestCase):
             with client.session_transaction() as sess:
                 sess['login_time'] = expired_time
             # Protected API endpoint should reject the expired session
-            resp = client.get('/api/config')
+            resp = client.get('/api/v1/config')
         self.assertEqual(resp.status_code, 401)
 
 
@@ -313,7 +313,7 @@ class TestConfigAdminGate(unittest.TestCase):
         with flask_app.test_client() as client:
             self._login_as(client, 'regularuser', 'userpass1!')
             resp = client.post(
-                '/api/config',
+                '/api/v1/config',
                 data=json.dumps({'remote_hosts': []}),
                 content_type='application/json',
             )
@@ -324,7 +324,7 @@ class TestConfigAdminGate(unittest.TestCase):
         with flask_app.test_client() as client:
             self._login_as(client, 'regularuser', 'userpass1!')
             resp = client.post(
-                '/api/config',
+                '/api/v1/config',
                 data=json.dumps({'projects_root': '/tmp'}),
                 content_type='application/json',
             )
@@ -335,7 +335,7 @@ class TestConfigAdminGate(unittest.TestCase):
         with flask_app.test_client() as client:
             self._login_as(client, 'regularuser', 'userpass1!')
             resp = client.post(
-                '/api/config',
+                '/api/v1/config',
                 data=json.dumps({'default_flags': []}),
                 content_type='application/json',
             )
@@ -346,7 +346,7 @@ class TestConfigAdminGate(unittest.TestCase):
         with flask_app.test_client() as client:
             self._login_as(client, 'adminuser', 'adminpass1')
             resp = client.post(
-                '/api/config',
+                '/api/v1/config',
                 data=json.dumps({'remote_hosts': []}),
                 content_type='application/json',
                 headers=_csrf_headers(client),
@@ -360,7 +360,7 @@ class TestConfigAdminGate(unittest.TestCase):
         with flask_app.test_client() as client:
             self._login_as(client, 'regularuser', 'userpass1!')
             resp = client.post(
-                '/api/config',
+                '/api/v1/config',
                 data=json.dumps({'theme': 'light'}),
                 content_type='application/json',
                 headers=_csrf_headers(client),
@@ -513,7 +513,7 @@ class TestUserManagement(unittest.TestCase):
         with flask_app.test_client() as client:
             self._login_as_user(client)
             resp = client.post(
-                '/api/users',
+                '/api/v1/users',
                 data=json.dumps({'username': 'newguy', 'password': 'newpassword1', 'role': 'user'}),
                 content_type='application/json',
             )
@@ -524,7 +524,7 @@ class TestUserManagement(unittest.TestCase):
         with flask_app.test_client() as client:
             self._login_as_admin(client)
             resp = client.post(
-                '/api/users',
+                '/api/v1/users',
                 data=json.dumps({'username': 'brandnew', 'password': 'strongpass1', 'role': 'user'}),
                 content_type='application/json',
                 headers=_csrf_headers(client),
@@ -542,7 +542,7 @@ class TestUserManagement(unittest.TestCase):
             self._login_as_admin(client)
             # 'regularuser' already exists in setUp
             resp = client.post(
-                '/api/users',
+                '/api/v1/users',
                 data=json.dumps({'username': 'regularuser', 'password': 'somepassword1', 'role': 'user'}),
                 content_type='application/json',
                 headers=_csrf_headers(client),
@@ -554,7 +554,7 @@ class TestUserManagement(unittest.TestCase):
         with flask_app.test_client() as client:
             self._login_as_admin(client)
             resp = client.delete(
-                '/api/users/adminuser',
+                '/api/v1/users/adminuser',
                 headers=_csrf_headers(client),
             )
         self.assertEqual(resp.status_code, 400)
@@ -566,7 +566,7 @@ class TestUserManagement(unittest.TestCase):
         with flask_app.test_client() as client:
             self._login_as_user(client)
             resp = client.post(
-                '/api/users/adminuser/password',
+                '/api/v1/users/adminuser/password',
                 data=json.dumps({'password': 'newstrongpass1'}),
                 content_type='application/json',
                 headers=_csrf_headers(client),
@@ -621,7 +621,7 @@ class TestCSRFProtection(unittest.TestCase):
         with flask_app.test_client() as client:
             self._login(client)
             resp = client.post(
-                '/api/config',
+                '/api/v1/config',
                 data=json.dumps({'theme': 'midnight-blue'}),
                 content_type='application/json',
             )
@@ -635,7 +635,7 @@ class TestCSRFProtection(unittest.TestCase):
             self._login(client)
             token = self._get_csrf_token(client)
             resp = client.post(
-                '/api/config',
+                '/api/v1/config',
                 data=json.dumps({'theme': 'midnight-blue'}),
                 content_type='application/json',
                 headers={'X-CSRF-Token': token},
@@ -647,7 +647,7 @@ class TestCSRFProtection(unittest.TestCase):
         app_module.AUTH['auth']['enabled'] = False
         with flask_app.test_client() as client:
             resp = client.post(
-                '/api/config',
+                '/api/v1/config',
                 data=json.dumps({'theme': 'dark'}),
                 content_type='application/json',
             )
@@ -660,7 +660,7 @@ class TestCSRFProtection(unittest.TestCase):
             # Get a real token first to establish session
             self._get_csrf_token(client)
             resp = client.post(
-                '/api/config',
+                '/api/v1/config',
                 data=json.dumps({'theme': 'dark'}),
                 content_type='application/json',
                 headers={'X-CSRF-Token': 'invalid-token-value'},
@@ -672,7 +672,7 @@ class TestCSRFProtection(unittest.TestCase):
         with flask_app.test_client() as client:
             self._login(client)
             resp = client.post(
-                '/api/users',
+                '/api/v1/users',
                 data=json.dumps({'username': 'newuser', 'password': 'password123', 'role': 'user'}),
                 content_type='application/json',
             )
@@ -683,7 +683,7 @@ class TestCSRFProtection(unittest.TestCase):
         with flask_app.test_client() as client:
             self._login(client)
             resp = client.post(
-                '/api/files/write',
+                '/api/v1/files/write',
                 data=json.dumps({'path': '/tmp/test.txt', 'content': 'hello'}),
                 content_type='application/json',
             )
@@ -861,7 +861,7 @@ class TestApiKeyRoutes(unittest.TestCase):
         """POST /api/user/api-key returns 401 when not logged in."""
         with flask_app.test_client() as client:
             resp = client.post(
-                '/api/user/api-key',
+                '/api/v1/user/api-key',
                 data=json.dumps({'api_key': 'sk-ant-api03-testapikey-AAAAA'}),
                 content_type='application/json',
             )
@@ -870,7 +870,7 @@ class TestApiKeyRoutes(unittest.TestCase):
     def test_api_key_get_requires_auth(self):
         """GET /api/user/api-key returns 401 when not logged in."""
         with flask_app.test_client() as client:
-            resp = client.get('/api/user/api-key')
+            resp = client.get('/api/v1/user/api-key')
         self.assertEqual(resp.status_code, 401)
 
     def test_api_key_store_requires_csrf(self):
@@ -879,7 +879,7 @@ class TestApiKeyRoutes(unittest.TestCase):
             _login(client)
             # Do NOT include CSRF header
             resp = client.post(
-                '/api/user/api-key',
+                '/api/v1/user/api-key',
                 data=json.dumps({'api_key': 'sk-ant-api03-testapikey-AAAAA'}),
                 content_type='application/json',
             )
@@ -894,7 +894,7 @@ class TestApiKeyRoutes(unittest.TestCase):
 
             # Store the key
             resp = client.post(
-                '/api/user/api-key',
+                '/api/v1/user/api-key',
                 data=json.dumps({'api_key': plaintext}),
                 content_type='application/json',
                 headers=headers,
@@ -903,7 +903,7 @@ class TestApiKeyRoutes(unittest.TestCase):
             self.assertTrue(resp.get_json().get('success'))
 
             # Retrieve — must not return plaintext
-            resp = client.get('/api/user/api-key')
+            resp = client.get('/api/v1/user/api-key')
             data = resp.get_json()
             self.assertEqual(resp.status_code, 200)
             self.assertTrue(data.get('has_key'))
@@ -917,7 +917,7 @@ class TestApiKeyRoutes(unittest.TestCase):
         """GET /api/user/api-key returns has_key=false when no key is stored."""
         with flask_app.test_client() as client:
             _login(client)
-            resp = client.get('/api/user/api-key')
+            resp = client.get('/api/v1/user/api-key')
             data = resp.get_json()
         self.assertEqual(resp.status_code, 200)
         self.assertFalse(data.get('has_key'))
@@ -928,7 +928,7 @@ class TestApiKeyRoutes(unittest.TestCase):
             _login(client)
             headers = _csrf_headers(client)
             resp = client.post(
-                '/api/user/api-key',
+                '/api/v1/user/api-key',
                 data=json.dumps({'api_key': ''}),
                 content_type='application/json',
                 headers=headers,
@@ -941,7 +941,7 @@ class TestApiKeyRoutes(unittest.TestCase):
             _login(client)
             headers = _csrf_headers(client)
             resp = client.post(
-                '/api/user/api-key',
+                '/api/v1/user/api-key',
                 data=json.dumps({'api_key': 'tooshort'}),
                 content_type='application/json',
                 headers=headers,
@@ -957,23 +957,23 @@ class TestApiKeyRoutes(unittest.TestCase):
 
             # Store first
             client.post(
-                '/api/user/api-key',
+                '/api/v1/user/api-key',
                 data=json.dumps({'api_key': plaintext}),
                 content_type='application/json',
                 headers=headers,
             )
 
             # Confirm stored
-            resp = client.get('/api/user/api-key')
+            resp = client.get('/api/v1/user/api-key')
             self.assertTrue(resp.get_json().get('has_key'))
 
             # Delete
-            resp = client.delete('/api/user/api-key', headers=headers)
+            resp = client.delete('/api/v1/user/api-key', headers=headers)
             self.assertEqual(resp.status_code, 200)
             self.assertTrue(resp.get_json().get('success'))
 
             # Confirm gone
-            resp = client.get('/api/user/api-key')
+            resp = client.get('/api/v1/user/api-key')
             self.assertFalse(resp.get_json().get('has_key'))
 
     def test_stored_key_is_not_plaintext_in_config(self):
@@ -983,7 +983,7 @@ class TestApiKeyRoutes(unittest.TestCase):
             _login(client)
             headers = _csrf_headers(client)
             client.post(
-                '/api/user/api-key',
+                '/api/v1/user/api-key',
                 data=json.dumps({'api_key': plaintext}),
                 content_type='application/json',
                 headers=headers,
@@ -1149,14 +1149,14 @@ class TestUserClaudeStatusRoutes(unittest.TestCase):
     def test_claude_status_requires_auth(self):
         """GET /api/user/claude-status returns 401 when not logged in."""
         with flask_app.test_client() as client:
-            resp = client.get('/api/user/claude-status')
+            resp = client.get('/api/v1/user/claude-status')
         self.assertEqual(resp.status_code, 401)
 
     def test_claude_status_no_credentials(self):
         """GET /api/user/claude-status returns has_credentials=False initially."""
         with flask_app.test_client() as client:
             _login(client)
-            resp = client.get('/api/user/claude-status')
+            resp = client.get('/api/v1/user/claude-status')
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         self.assertFalse(data['has_credentials'])
@@ -1172,7 +1172,7 @@ class TestUserClaudeStatusRoutes(unittest.TestCase):
                 u['encrypted_api_key'] = encrypted
         with flask_app.test_client() as client:
             _login(client)
-            resp = client.get('/api/user/claude-status')
+            resp = client.get('/api/v1/user/claude-status')
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         self.assertTrue(data['has_credentials'])
@@ -1186,7 +1186,7 @@ class TestUserClaudeStatusRoutes(unittest.TestCase):
         (cred_dir / 'credentials.json').write_text('{}')
         with flask_app.test_client() as client:
             _login(client)
-            resp = client.get('/api/user/claude-status')
+            resp = client.get('/api/v1/user/claude-status')
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         self.assertTrue(data['has_credentials'])
@@ -1197,14 +1197,14 @@ class TestUserClaudeStatusRoutes(unittest.TestCase):
         app_module.CONFIG['multi_tenant'] = True
         with flask_app.test_client() as client:
             _login(client)
-            resp = client.get('/api/user/claude-status')
+            resp = client.get('/api/v1/user/claude-status')
         data = resp.get_json()
         self.assertTrue(data['multi_tenant'])
 
     def test_claude_logout_requires_auth(self):
         """POST /api/user/claude-logout returns 401 when not logged in."""
         with flask_app.test_client() as client:
-            resp = client.post('/api/user/claude-logout')
+            resp = client.post('/api/v1/user/claude-logout')
         self.assertEqual(resp.status_code, 401)
 
     def test_claude_logout_requires_csrf(self):
@@ -1212,7 +1212,7 @@ class TestUserClaudeStatusRoutes(unittest.TestCase):
         with flask_app.test_client() as client:
             _login(client)
             resp = client.post(
-                '/api/user/claude-logout',
+                '/api/v1/user/claude-logout',
                 data=json.dumps({}),
                 content_type='application/json',
             )
@@ -1229,7 +1229,7 @@ class TestUserClaudeStatusRoutes(unittest.TestCase):
         with flask_app.test_client() as client:
             _login(client)
             headers = _csrf_headers(client)
-            resp = client.post('/api/user/claude-logout', headers=headers)
+            resp = client.post('/api/v1/user/claude-logout', headers=headers)
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.get_json().get('success'))
         self.assertFalse(cred_dir.exists())
@@ -1239,7 +1239,7 @@ class TestUserClaudeStatusRoutes(unittest.TestCase):
         with flask_app.test_client() as client:
             _login(client)
             headers = _csrf_headers(client)
-            resp = client.post('/api/user/claude-logout', headers=headers)
+            resp = client.post('/api/v1/user/claude-logout', headers=headers)
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.get_json().get('success'))
 
@@ -1279,7 +1279,7 @@ class TestHostsListEndpoint(unittest.TestCase):
             _make_ssh_host('srv2', 'Staging', group='staging'),
         ]
         with flask_app.test_client() as client:
-            resp = client.get('/api/hosts')
+            resp = client.get('/api/v1/hosts')
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         self.assertIn('hosts', data)
@@ -1293,7 +1293,7 @@ class TestHostsListEndpoint(unittest.TestCase):
         _disable_auth()
         app_module.CONFIG['remote_hosts'] = []
         with flask_app.test_client() as client:
-            resp = client.get('/api/hosts')
+            resp = client.get('/api/v1/hosts')
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         self.assertEqual(data.get('hosts'), [])
@@ -1303,7 +1303,7 @@ class TestHostsListEndpoint(unittest.TestCase):
         _enable_auth()
         app_module.CONFIG['remote_hosts'] = [_make_ssh_host()]
         with flask_app.test_client() as client:
-            resp = client.get('/api/hosts')
+            resp = client.get('/api/v1/hosts')
         self.assertEqual(resp.status_code, 401)
 
     def test_hosts_list_host_fields(self):
@@ -1313,7 +1313,7 @@ class TestHostsListEndpoint(unittest.TestCase):
             _make_ssh_host('s1', 'My Server', group='prod', tags=['linux', 'web'])
         ]
         with flask_app.test_client() as client:
-            resp = client.get('/api/hosts')
+            resp = client.get('/api/v1/hosts')
         host = resp.get_json()['hosts'][0]
         for field in ('id', 'name', 'hostname', 'username', 'method', 'status', 'group', 'tags'):
             self.assertIn(field, host, f"Missing field: {field}")
@@ -1327,7 +1327,7 @@ class TestHostsListEndpoint(unittest.TestCase):
         app_module.CONFIG['remote_hosts'] = [_make_ssh_host()]
         with flask_app.test_client() as client:
             _login(client)
-            resp = client.get('/api/hosts')
+            resp = client.get('/api/v1/hosts')
         self.assertEqual(resp.status_code, 200)
 
 
@@ -1348,7 +1348,7 @@ class TestHostsGroupsEndpoint(unittest.TestCase):
             _make_ssh_host('s3', group='staging'),
         ]
         with flask_app.test_client() as client:
-            resp = client.get('/api/hosts/groups')
+            resp = client.get('/api/v1/hosts/groups')
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         self.assertIn('groups', data)
@@ -1361,7 +1361,7 @@ class TestHostsGroupsEndpoint(unittest.TestCase):
         _disable_auth()
         app_module.CONFIG['remote_hosts'] = []
         with flask_app.test_client() as client:
-            resp = client.get('/api/hosts/groups')
+            resp = client.get('/api/v1/hosts/groups')
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.get_json().get('groups'), [])
 
@@ -1370,7 +1370,7 @@ class TestHostsGroupsEndpoint(unittest.TestCase):
         _enable_auth()
         app_module.CONFIG['remote_hosts'] = [_make_ssh_host(group='prod')]
         with flask_app.test_client() as client:
-            resp = client.get('/api/hosts/groups')
+            resp = client.get('/api/v1/hosts/groups')
         self.assertEqual(resp.status_code, 401)
 
     def test_hosts_groups_no_group_field(self):
@@ -1380,7 +1380,7 @@ class TestHostsGroupsEndpoint(unittest.TestCase):
         host.pop('group', None)
         app_module.CONFIG['remote_hosts'] = [host]
         with flask_app.test_client() as client:
-            resp = client.get('/api/hosts/groups')
+            resp = client.get('/api/v1/hosts/groups')
         data = resp.get_json()
         by_name = {g['group']: g['count'] for g in data['groups']}
         self.assertEqual(by_name.get(''), 1)
@@ -1399,7 +1399,7 @@ class TestHostHealthEndpoint(unittest.TestCase):
         _disable_auth()
         app_module.CONFIG['remote_hosts'] = []
         with flask_app.test_client() as client:
-            resp = client.post('/api/hosts/nonexistent/health',
+            resp = client.post('/api/v1/hosts/nonexistent/health',
                                content_type='application/json')
         self.assertEqual(resp.status_code, 404)
         data = resp.get_json()
@@ -1410,7 +1410,7 @@ class TestHostHealthEndpoint(unittest.TestCase):
         _enable_auth()
         app_module.CONFIG['remote_hosts'] = [_make_ssh_host('s1')]
         with flask_app.test_client() as client:
-            resp = client.post('/api/hosts/s1/health',
+            resp = client.post('/api/v1/hosts/s1/health',
                                content_type='application/json')
         self.assertEqual(resp.status_code, 401)
 
@@ -1420,7 +1420,7 @@ class TestHostHealthEndpoint(unittest.TestCase):
         app_module.CONFIG['remote_hosts'] = [_make_ssh_host('s1')]
         with flask_app.test_client() as client:
             _login(client)
-            resp = client.post('/api/hosts/s1/health',
+            resp = client.post('/api/v1/hosts/s1/health',
                                data='{}',
                                content_type='application/json')
         self.assertEqual(resp.status_code, 403)
@@ -1438,7 +1438,7 @@ class TestHostHealthEndpoint(unittest.TestCase):
 
         with mock.patch('subprocess.run', return_value=fake_result):
             with flask_app.test_client() as client:
-                resp = client.post('/api/hosts/s1/health',
+                resp = client.post('/api/v1/hosts/s1/health',
                                    content_type='application/json')
 
         self.assertEqual(resp.status_code, 200)
@@ -1461,7 +1461,7 @@ class TestHostHealthEndpoint(unittest.TestCase):
 
         with mock.patch('subprocess.run', return_value=fake_result):
             with flask_app.test_client() as client:
-                resp = client.post('/api/hosts/s1/health',
+                resp = client.post('/api/v1/hosts/s1/health',
                                    content_type='application/json')
 
         data = resp.get_json()
@@ -1478,7 +1478,7 @@ class TestHostHealthEndpoint(unittest.TestCase):
         with mock.patch('subprocess.run',
                         side_effect=_sp.TimeoutExpired(cmd='ssh', timeout=10)):
             with flask_app.test_client() as client:
-                resp = client.post('/api/hosts/s1/health',
+                resp = client.post('/api/v1/hosts/s1/health',
                                    content_type='application/json')
 
         data = resp.get_json()
@@ -1498,7 +1498,7 @@ class TestHostsBatchHealthEndpoint(unittest.TestCase):
         _disable_auth()
         app_module.CONFIG['remote_hosts'] = []
         with flask_app.test_client() as client:
-            resp = client.post('/api/hosts/health', content_type='application/json')
+            resp = client.post('/api/v1/hosts/health', content_type='application/json')
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.get_json().get('results'), [])
 
@@ -1507,7 +1507,7 @@ class TestHostsBatchHealthEndpoint(unittest.TestCase):
         _enable_auth()
         app_module.CONFIG['remote_hosts'] = [_make_ssh_host()]
         with flask_app.test_client() as client:
-            resp = client.post('/api/hosts/health', content_type='application/json')
+            resp = client.post('/api/v1/hosts/health', content_type='application/json')
         self.assertEqual(resp.status_code, 401)
 
     def test_batch_health_returns_result_per_host(self):
@@ -1526,7 +1526,7 @@ class TestHostsBatchHealthEndpoint(unittest.TestCase):
 
         with mock.patch('subprocess.run', return_value=fake_result):
             with flask_app.test_client() as client:
-                resp = client.post('/api/hosts/health', content_type='application/json')
+                resp = client.post('/api/v1/hosts/health', content_type='application/json')
 
         self.assertEqual(resp.status_code, 200)
         results = resp.get_json().get('results', [])
@@ -1551,7 +1551,7 @@ class TestOnboarding(unittest.TestCase):
         """GET /api/onboarding/status returns 401 when not logged in."""
         _enable_auth()
         with flask_app.test_client() as client:
-            resp = client.get('/api/onboarding/status')
+            resp = client.get('/api/v1/onboarding/status')
         self.assertEqual(resp.status_code, 401)
 
     def _set_session(self, client, username='newuser', role='user'):
@@ -1574,7 +1574,7 @@ class TestOnboarding(unittest.TestCase):
         app_module.CONFIG['favorites'] = []
         with flask_app.test_client() as client:
             self._set_session(client, username='newuser', role='user')
-            resp = client.get('/api/onboarding/status')
+            resp = client.get('/api/v1/onboarding/status')
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         self.assertTrue(data['needs_onboarding'])
@@ -1593,7 +1593,7 @@ class TestOnboarding(unittest.TestCase):
         }]
         with flask_app.test_client() as client:
             self._set_session(client, username='veteran', role='user')
-            resp = client.get('/api/onboarding/status')
+            resp = client.get('/api/v1/onboarding/status')
         data = resp.get_json()
         self.assertFalse(data['needs_onboarding'])
 
@@ -1601,7 +1601,7 @@ class TestOnboarding(unittest.TestCase):
         """Solo mode (auth disabled) always returns needs_onboarding=false."""
         _disable_auth()
         with flask_app.test_client() as client:
-            resp = client.get('/api/onboarding/status')
+            resp = client.get('/api/v1/onboarding/status')
         data = resp.get_json()
         self.assertFalse(data['needs_onboarding'])
 
@@ -1615,7 +1615,7 @@ class TestOnboarding(unittest.TestCase):
         }]
         with flask_app.test_client() as client:
             self._set_session(client, username='newuser', role='user')
-            resp = client.post('/api/onboarding/complete',
+            resp = client.post('/api/v1/onboarding/complete',
                                data='{}',
                                content_type='application/json',
                                headers=_csrf_headers(client))
@@ -1633,7 +1633,7 @@ class TestOnboarding(unittest.TestCase):
         }]
         with flask_app.test_client() as client:
             self._set_session(client, username='newuser', role='user')
-            resp = client.post('/api/onboarding/complete',
+            resp = client.post('/api/v1/onboarding/complete',
                                data='{}',
                                content_type='application/json')
         self.assertEqual(resp.status_code, 403)
@@ -1836,7 +1836,7 @@ class TestLockoutAdminEndpoints(unittest.TestCase):
         """GET /api/admin/lockouts returns 401 when not authenticated."""
         _enable_auth()
         with flask_app.test_client() as client:
-            resp = client.get('/api/admin/lockouts')
+            resp = client.get('/api/v1/admin/lockouts')
         self.assertIn(resp.status_code, (401, 302))
 
     def test_lockout_list_requires_admin(self):
@@ -1844,7 +1844,7 @@ class TestLockoutAdminEndpoints(unittest.TestCase):
         self._setup_with_regular_user()
         with flask_app.test_client() as client:
             self._login_as_user(client)
-            resp = client.get('/api/admin/lockouts')
+            resp = client.get('/api/v1/admin/lockouts')
         self.assertEqual(resp.status_code, 403)
 
     def test_lockout_list_returns_locked_ips(self):
@@ -1855,7 +1855,7 @@ class TestLockoutAdminEndpoints(unittest.TestCase):
             app_module.record_failed_login(ip)
         with flask_app.test_client() as client:
             self._login_as_admin(client)
-            resp = client.get('/api/admin/lockouts')
+            resp = client.get('/api/v1/admin/lockouts')
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         ips = [entry['ip'] for entry in data['lockouts']]
@@ -1870,7 +1870,7 @@ class TestLockoutAdminEndpoints(unittest.TestCase):
             app_module.record_failed_login(ip)
         with flask_app.test_client() as client:
             self._login_as_admin(client)
-            resp = client.get('/api/admin/lockouts')
+            resp = client.get('/api/v1/admin/lockouts')
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         ips = [entry['ip'] for entry in data['lockouts']]
@@ -1889,7 +1889,7 @@ class TestLockoutAdminEndpoints(unittest.TestCase):
         with flask_app.test_client() as client:
             self._login_as_admin(client)
             resp = client.post(
-                '/api/admin/unlock-ip',
+                '/api/v1/admin/unlock-ip',
                 data=json.dumps({'ip': ip}),
                 content_type='application/json',
                 headers=_csrf_headers(client),
@@ -1912,7 +1912,7 @@ class TestLockoutAdminEndpoints(unittest.TestCase):
         with flask_app.test_client() as client:
             self._login_as_user(client)
             resp = client.post(
-                '/api/admin/unlock-ip',
+                '/api/v1/admin/unlock-ip',
                 data=json.dumps({'ip': ip}),
                 content_type='application/json',
                 headers=_csrf_headers(client),
@@ -1928,7 +1928,7 @@ class TestLockoutAdminEndpoints(unittest.TestCase):
         with flask_app.test_client() as client:
             self._login_as_admin(client)
             resp = client.post(
-                '/api/admin/unlock-ip',
+                '/api/v1/admin/unlock-ip',
                 data=json.dumps({'ip': ip}),
                 content_type='application/json',
                 # No X-CSRF-Token header
@@ -1941,12 +1941,142 @@ class TestLockoutAdminEndpoints(unittest.TestCase):
         with flask_app.test_client() as client:
             self._login_as_admin(client)
             resp = client.post(
-                '/api/admin/unlock-ip',
+                '/api/v1/admin/unlock-ip',
                 data=json.dumps({}),
                 content_type='application/json',
                 headers=_csrf_headers(client),
             )
         self.assertEqual(resp.status_code, 400)
+
+
+# ===========================================================================
+# API Versioning Tests  (#43)
+# ===========================================================================
+
+class TestAPIVersioning(unittest.TestCase):
+    """Verify /api/v1/ routing, backwards-compat redirects, and version header."""
+
+    def setUp(self):
+        self._config_snap = _snapshot_config()
+        _disable_auth()
+
+    def tearDown(self):
+        _restore_config(self._config_snap)
+
+    # --- /api/v1/ canonical routes ---
+
+    def test_v1_config_responds(self):
+        """GET /api/v1/config returns 200 (versioned route works)."""
+        with flask_app.test_client() as client:
+            resp = client.get('/api/v1/config')
+        self.assertEqual(resp.status_code, 200)
+
+    def test_v1_status_responds(self):
+        """GET /api/v1/status returns 200 (versioned route works)."""
+        with flask_app.test_client() as client:
+            resp = client.get('/api/v1/status')
+        self.assertEqual(resp.status_code, 200)
+
+    def test_v1_auth_status_responds(self):
+        """GET /api/v1/auth/status returns 200 (versioned route works)."""
+        with flask_app.test_client() as client:
+            resp = client.get('/api/v1/auth/status')
+        self.assertEqual(resp.status_code, 200)
+
+    # --- /api/ legacy routes redirect with 308 ---
+
+    def test_old_config_redirects_to_v1(self):
+        """GET /api/config returns 308 pointing to /api/v1/config."""
+        with flask_app.test_client() as client:
+            resp = client.get('/api/config', follow_redirects=False)
+        self.assertEqual(resp.status_code, 308)
+        location = resp.headers.get('Location', '')
+        self.assertIn('/api/v1/config', location)
+
+    def test_old_post_redirects_with_308(self):
+        """POST /api/config returns 308 (method-preserving) not 301/302."""
+        with flask_app.test_client() as client:
+            resp = client.post(
+                '/api/config',
+                data=json.dumps({}),
+                content_type='application/json',
+                follow_redirects=False,
+            )
+        self.assertEqual(resp.status_code, 308)
+        location = resp.headers.get('Location', '')
+        self.assertIn('/api/v1/config', location)
+
+    def test_old_nested_route_redirects(self):
+        """GET /api/auth/status redirects to /api/v1/auth/status."""
+        with flask_app.test_client() as client:
+            resp = client.get('/api/auth/status', follow_redirects=False)
+        self.assertEqual(resp.status_code, 308)
+        location = resp.headers.get('Location', '')
+        self.assertIn('/api/v1/auth/status', location)
+
+    def test_old_route_redirect_then_responds(self):
+        """GET /api/config following redirects ultimately returns 200."""
+        with flask_app.test_client() as client:
+            resp = client.get('/api/config', follow_redirects=True)
+        self.assertEqual(resp.status_code, 200)
+
+    # --- X-API-Version header ---
+
+    def test_api_version_header_present(self):
+        """GET /api/v1/config response includes X-API-Version: 1 header."""
+        with flask_app.test_client() as client:
+            resp = client.get('/api/v1/config')
+        self.assertEqual(resp.headers.get('X-API-Version'), '1')
+
+    def test_api_version_header_on_post(self):
+        """POST to /api/v1 route also carries X-API-Version header."""
+        with flask_app.test_client() as client:
+            resp = client.post(
+                '/api/v1/auth/setup',
+                data=json.dumps({'username': 'x', 'password': 'y'}),
+                content_type='application/json',
+            )
+        # Status may be 400 (already configured) or 200 — either way header must be present
+        self.assertEqual(resp.headers.get('X-API-Version'), '1')
+
+    # --- Unversioned routes stay unversioned ---
+
+    def test_health_stays_unversioned(self):
+        """/api/health responds directly at 200, no redirect."""
+        with flask_app.test_client() as client:
+            resp = client.get('/api/health', follow_redirects=False)
+        self.assertEqual(resp.status_code, 200)
+
+    def test_health_no_version_header(self):
+        """/api/health does NOT receive X-API-Version header (unversioned route)."""
+        with flask_app.test_client() as client:
+            resp = client.get('/api/health')
+        self.assertIsNone(resp.headers.get('X-API-Version'))
+
+    def test_csrf_token_stays_unversioned(self):
+        """/api/csrf-token responds directly at 200, no redirect."""
+        with flask_app.test_client() as client:
+            resp = client.get('/api/csrf-token', follow_redirects=False)
+        self.assertEqual(resp.status_code, 200)
+
+    def test_health_is_not_on_blueprint(self):
+        """/api/v1/health is not a blueprint route; /api/health works directly at 200."""
+        with flask_app.test_client() as client:
+            # The canonical path works
+            direct = client.get('/api/health', follow_redirects=False)
+            # The blueprint path is not registered (health was intentionally excluded)
+            blueprint_resp = client.get('/api/v1/health', follow_redirects=False)
+        self.assertEqual(direct.status_code, 200)
+        # Blueprint path should NOT be 200 (health is not a versioned route)
+        self.assertNotEqual(blueprint_resp.status_code, 200)
+
+    def test_csrf_token_is_not_on_blueprint(self):
+        """/api/v1/csrf-token is not a blueprint route; /api/csrf-token works directly."""
+        with flask_app.test_client() as client:
+            direct = client.get('/api/csrf-token', follow_redirects=False)
+            blueprint_resp = client.get('/api/v1/csrf-token', follow_redirects=False)
+        self.assertEqual(direct.status_code, 200)
+        self.assertNotEqual(blueprint_resp.status_code, 200)
 
 
 if __name__ == '__main__':

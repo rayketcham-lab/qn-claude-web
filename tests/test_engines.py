@@ -330,24 +330,24 @@ class TestEnginesApiRoute(unittest.TestCase):
 
     def test_returns_200_when_authenticated(self):
         _disable_auth()
-        resp = self.client.get('/api/engines')
+        resp = self.client.get('/api/v1/engines')
         self.assertEqual(resp.status_code, 200)
 
     def test_returns_engines_key(self):
         _disable_auth()
-        resp = self.client.get('/api/engines')
+        resp = self.client.get('/api/v1/engines')
         data = json.loads(resp.data)
         self.assertIn('engines', data)
 
     def test_engines_is_list(self):
         _disable_auth()
-        resp = self.client.get('/api/engines')
+        resp = self.client.get('/api/v1/engines')
         data = json.loads(resp.data)
         self.assertIsInstance(data['engines'], list)
 
     def test_engines_list_has_claude_and_aider(self):
         _disable_auth()
-        resp = self.client.get('/api/engines')
+        resp = self.client.get('/api/v1/engines')
         data = json.loads(resp.data)
         names = [e['name'] for e in data['engines']]
         self.assertIn('claude', names)
@@ -355,7 +355,7 @@ class TestEnginesApiRoute(unittest.TestCase):
 
     def test_each_engine_entry_has_required_fields(self):
         _disable_auth()
-        resp = self.client.get('/api/engines')
+        resp = self.client.get('/api/v1/engines')
         data = json.loads(resp.data)
         for entry in data['engines']:
             self.assertIn('name', entry)
@@ -366,7 +366,7 @@ class TestEnginesApiRoute(unittest.TestCase):
     def test_default_engine_marked_correctly(self):
         _disable_auth()
         app_module.CONFIG['default_engine'] = 'claude'
-        resp = self.client.get('/api/engines')
+        resp = self.client.get('/api/v1/engines')
         data = json.loads(resp.data)
         claude_entry = next(e for e in data['engines'] if e['name'] == 'claude')
         aider_entry = next(e for e in data['engines'] if e['name'] == 'aider')
@@ -376,7 +376,7 @@ class TestEnginesApiRoute(unittest.TestCase):
     def test_available_field_reflects_detection(self):
         _disable_auth()
         with patch('shutil.which', return_value=None):
-            resp = self.client.get('/api/engines')
+            resp = self.client.get('/api/v1/engines')
         data = json.loads(resp.data)
         for entry in data['engines']:
             self.assertFalse(entry['available'])
@@ -385,7 +385,7 @@ class TestEnginesApiRoute(unittest.TestCase):
         _enable_auth()
         # Fresh client with no session cookie
         fresh_client = flask_app.test_client()
-        resp = fresh_client.get('/api/engines')
+        resp = fresh_client.get('/api/v1/engines')
         # Should redirect to login, not return 200
         self.assertNotEqual(resp.status_code, 200)
 

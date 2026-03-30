@@ -322,7 +322,7 @@ class TestApiUsageEndpoint(unittest.TestCase):
         """GET /api/usage returns 401 when not logged in."""
         _enable_auth()
         with flask_app.test_client() as client:
-            resp = client.get('/api/usage')
+            resp = client.get('/api/v1/usage')
         self.assertEqual(resp.status_code, 401)
 
     def test_usage_api_returns_current_user(self):
@@ -338,7 +338,7 @@ class TestApiUsageEndpoint(unittest.TestCase):
 
         with flask_app.test_client() as client:
             _login(client, username='testadmin')
-            resp = client.get('/api/usage')
+            resp = client.get('/api/v1/usage')
 
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
@@ -362,7 +362,7 @@ class TestApiUsageEndpoint(unittest.TestCase):
 
         with flask_app.test_client() as client:
             _login(client, username='adminuser')
-            resp = client.get('/api/usage')
+            resp = client.get('/api/v1/usage')
 
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
@@ -385,7 +385,7 @@ class TestApiUsageEndpoint(unittest.TestCase):
 
         with flask_app.test_client() as client:
             _login(client, username='regularuser', role='user')
-            resp = client.get('/api/usage')
+            resp = client.get('/api/v1/usage')
 
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
@@ -398,7 +398,7 @@ class TestApiUsageEndpoint(unittest.TestCase):
         """GET /api/usage response includes weekly, total, reset_time, week_key."""
         _disable_auth()
         with flask_app.test_client() as client:
-            resp = client.get('/api/usage')
+            resp = client.get('/api/v1/usage')
 
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
@@ -415,7 +415,7 @@ class TestApiUsageEndpoint(unittest.TestCase):
             json.dump(usage, f)
 
         with flask_app.test_client() as client:
-            resp = client.get('/api/usage')
+            resp = client.get('/api/v1/usage')
 
         data = resp.get_json()
         self.assertIn('estimated_cost_usd', data.get('user', {}))
@@ -425,7 +425,7 @@ class TestApiUsageEndpoint(unittest.TestCase):
         _disable_auth()
         app_module.CONFIG['claude_plan'] = 'max'
         with flask_app.test_client() as client:
-            resp = client.get('/api/usage')
+            resp = client.get('/api/v1/usage')
 
         data = resp.get_json()
         user_data = data.get('user', {})
@@ -463,14 +463,14 @@ class TestApiUsageSummaryEndpoint(unittest.TestCase):
         """GET /api/usage/summary returns 401 when not logged in."""
         _enable_auth()
         with flask_app.test_client() as client:
-            resp = client.get('/api/usage/summary')
+            resp = client.get('/api/v1/usage/summary')
         self.assertEqual(resp.status_code, 401)
 
     def test_summary_has_required_fields(self):
         """GET /api/usage/summary includes expected top-level fields."""
         _disable_auth()
         with flask_app.test_client() as client:
-            resp = client.get('/api/usage/summary')
+            resp = client.get('/api/v1/usage/summary')
 
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
@@ -481,7 +481,7 @@ class TestApiUsageSummaryEndpoint(unittest.TestCase):
         """daily_trend always contains exactly 7 entries."""
         _disable_auth()
         with flask_app.test_client() as client:
-            resp = client.get('/api/usage/summary')
+            resp = client.get('/api/v1/usage/summary')
 
         data = resp.get_json()
         self.assertEqual(len(data['daily_trend']), 7)
@@ -490,7 +490,7 @@ class TestApiUsageSummaryEndpoint(unittest.TestCase):
         """daily_trend entries are ordered from oldest to today."""
         _disable_auth()
         with flask_app.test_client() as client:
-            resp = client.get('/api/usage/summary')
+            resp = client.get('/api/v1/usage/summary')
 
         data = resp.get_json()
         trend = data['daily_trend']
@@ -502,7 +502,7 @@ class TestApiUsageSummaryEndpoint(unittest.TestCase):
         _disable_auth()
         today = datetime.now().strftime('%Y-%m-%d')
         with flask_app.test_client() as client:
-            resp = client.get('/api/usage/summary')
+            resp = client.get('/api/v1/usage/summary')
 
         data = resp.get_json()
         self.assertEqual(data['daily_trend'][-1]['date'], today)
@@ -518,7 +518,7 @@ class TestApiUsageSummaryEndpoint(unittest.TestCase):
 
         with flask_app.test_client() as client:
             _login(client, username='adminuser')
-            resp = client.get('/api/usage/summary')
+            resp = client.get('/api/v1/usage/summary')
 
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
@@ -536,7 +536,7 @@ class TestApiUsageSummaryEndpoint(unittest.TestCase):
 
         with flask_app.test_client() as client:
             _login(client, username='regularuser', role='user')
-            resp = client.get('/api/usage/summary')
+            resp = client.get('/api/v1/usage/summary')
 
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
@@ -549,7 +549,7 @@ class TestApiUsageSummaryEndpoint(unittest.TestCase):
         _disable_auth()
         app_module.CONFIG['claude_plan'] = 'api_key'
         with flask_app.test_client() as client:
-            resp = client.get('/api/usage/summary')
+            resp = client.get('/api/v1/usage/summary')
 
         data = resp.get_json()
         self.assertIn('estimated_cost_usd', data)
@@ -559,7 +559,7 @@ class TestApiUsageSummaryEndpoint(unittest.TestCase):
         _disable_auth()
         app_module.CONFIG['claude_plan'] = 'max'
         with flask_app.test_client() as client:
-            resp = client.get('/api/usage/summary')
+            resp = client.get('/api/v1/usage/summary')
 
         data = resp.get_json()
         self.assertIn('plan', data)
@@ -576,7 +576,7 @@ class TestApiUsageSummaryEndpoint(unittest.TestCase):
             json.dump(usage, f)
 
         with flask_app.test_client() as client:
-            resp = client.get('/api/usage/summary')
+            resp = client.get('/api/v1/usage/summary')
 
         data = resp.get_json()
         today_entry = next(e for e in data['daily_trend'] if e['date'] == today)
@@ -592,7 +592,7 @@ class TestApiUsageSummaryEndpoint(unittest.TestCase):
             json.dump(usage, f)
 
         with flask_app.test_client() as client:
-            resp = client.get('/api/usage/summary')
+            resp = client.get('/api/v1/usage/summary')
 
         data = resp.get_json()
         self.assertEqual(data['total_input_tokens'], 12345)

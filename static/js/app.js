@@ -147,7 +147,7 @@ class ClaudeCodeWeb {
     async init() {
         // Check auth status first
         try {
-            const authStatus = await fetch('/api/auth/status').then(r => r.json());
+            const authStatus = await fetch('/api/v1/auth/status').then(r => r.json());
             if (authStatus.auth_enabled && !authStatus.authenticated) {
                 window.location.href = '/login';
                 return;
@@ -236,7 +236,7 @@ class ClaudeCodeWeb {
 
     async checkServerStatus() {
         try {
-            const response = await fetch('/api/status');
+            const response = await fetch('/api/v1/status');
             const status = await response.json();
 
             const header = document.querySelector('.sidebar-header h1');
@@ -256,7 +256,7 @@ class ClaudeCodeWeb {
 
     async loadConfig() {
         try {
-            const response = await fetch('/api/config');
+            const response = await fetch('/api/v1/config');
             this.config = await response.json();
             this.renderFavoritesSidebar();
             this.renderRemoteHostsSidebar();
@@ -290,7 +290,7 @@ class ClaudeCodeWeb {
         }
         body.innerHTML = '<div style="color:var(--text-secondary);padding:20px;text-align:center;">Loading...</div>';
         try {
-            const response = await fetch('/api/changelog');
+            const response = await fetch('/api/v1/changelog');
             const data = await response.json();
             this._changelogHtml = '<div class="changelog-content">' +
                 this.renderMarkdown(data.content || '# Changelog\n\nNo content.') + '</div>';
@@ -318,7 +318,7 @@ class ClaudeCodeWeb {
 
     async populateAuthSettings() {
         try {
-            const status = await fetch('/api/auth/status').then(r => r.json());
+            const status = await fetch('/api/v1/auth/status').then(r => r.json());
             const display = document.getElementById('auth-status-display');
             if (status.auth_enabled) {
                 display.innerHTML = 'Status: <span style="color:var(--success);">Enabled</span>';
@@ -351,7 +351,7 @@ class ClaudeCodeWeb {
         };
 
         try {
-            const response = await this.csrfFetch('/api/config', {
+            const response = await this.csrfFetch('/api/v1/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
@@ -385,7 +385,7 @@ class ClaudeCodeWeb {
         }
 
         try {
-            const res = await this.csrfFetch('/api/auth/setup', {
+            const res = await this.csrfFetch('/api/v1/auth/setup', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password })
@@ -412,7 +412,7 @@ class ClaudeCodeWeb {
         };
 
         try {
-            const response = await this.csrfFetch('/api/config', {
+            const response = await this.csrfFetch('/api/v1/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
@@ -501,7 +501,7 @@ class ClaudeCodeWeb {
         favorites.push({ name, path, remote_host_id: remoteHostId });
 
         try {
-            const response = await this.csrfFetch('/api/config', {
+            const response = await this.csrfFetch('/api/v1/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ favorites })
@@ -528,7 +528,7 @@ class ClaudeCodeWeb {
         favorites.splice(index, 1);
 
         try {
-            await this.csrfFetch('/api/config', {
+            await this.csrfFetch('/api/v1/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ favorites })
@@ -612,7 +612,7 @@ class ClaudeCodeWeb {
         remoteHosts.splice(index, 1);
 
         try {
-            await this.csrfFetch('/api/config', {
+            await this.csrfFetch('/api/v1/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ remote_hosts: remoteHosts })
@@ -634,7 +634,7 @@ class ClaudeCodeWeb {
         this.elements.projectsList.innerHTML = '<div class="empty-state"><div class="loading"></div><p>Loading remote projects...</p></div>';
 
         try {
-            const response = await fetch(`/api/remote/${hostId}/projects`);
+            const response = await fetch(`/api/v1/remote/${hostId}/projects`);
             const data = await response.json();
 
             if (data.error) {
@@ -668,7 +668,7 @@ class ClaudeCodeWeb {
 
     async restorePersistentSession() {
         try {
-            const response = await fetch('/api/session/persistent');
+            const response = await fetch('/api/v1/session/persistent');
             if (response.ok) {
                 this.currentSession = await response.json();
                 this.renderChatMessages();
@@ -1300,7 +1300,7 @@ class ClaudeCodeWeb {
     // ============== Projects ==============
 
     async loadProjects(root = null) {
-        const url = root ? `/api/projects?root=${encodeURIComponent(root)}` : '/api/projects';
+        const url = root ? `/api/v1/projects?root=${encodeURIComponent(root)}` : '/api/v1/projects';
         this.selectedRemoteHostId = null;
         document.getElementById('projects-section-label').textContent = 'Local Projects';
 
@@ -1623,7 +1623,7 @@ class ClaudeCodeWeb {
     async _checkDetachedSessions() {
         /**Check for detached tmux sessions and offer reconnection.*/
         try {
-            const resp = await fetch('/api/tmux/sessions');
+            const resp = await fetch('/api/v1/tmux/sessions');
             if (!resp.ok) return;
             const data = await resp.json();
             const detached = (data.sessions || []).filter(s => !s.attached);
@@ -1945,7 +1945,7 @@ class ClaudeCodeWeb {
 
     async loadUsage() {
         try {
-            const response = await fetch('/api/usage');
+            const response = await fetch('/api/v1/usage');
             if (response.ok) {
                 const data = await response.json();
                 this._usage = data;
@@ -2312,7 +2312,7 @@ class ClaudeCodeWeb {
             return;
         }
         try {
-            const response = await fetch(`/api/session/${this.currentSession.id}/export`);
+            const response = await fetch(`/api/v1/session/${this.currentSession.id}/export`);
             if (!response.ok) throw new Error('Export failed');
             const blob = await response.blob();
             const url = URL.createObjectURL(blob);
@@ -2340,7 +2340,7 @@ class ClaudeCodeWeb {
         }
 
         try {
-            const response = await fetch(`/api/sessions/search?q=${encodeURIComponent(query)}`);
+            const response = await fetch(`/api/v1/sessions/search?q=${encodeURIComponent(query)}`);
             const data = await response.json();
 
             if (data.results.length === 0) {
@@ -2362,7 +2362,7 @@ class ClaudeCodeWeb {
 
     async loadSessionById(sessionId) {
         try {
-            const response = await fetch(`/api/session/${sessionId}`);
+            const response = await fetch(`/api/v1/session/${sessionId}`);
             if (response.ok) {
                 this.currentSession = await response.json();
                 this.renderChatMessages();
@@ -2387,7 +2387,7 @@ class ClaudeCodeWeb {
         if (!badge) return;
 
         try {
-            const response = await fetch(`/api/git/status?path=${encodeURIComponent(path)}`);
+            const response = await fetch(`/api/v1/git/status?path=${encodeURIComponent(path)}`);
             const data = await response.json();
 
             if (!data.is_git) {
@@ -2425,7 +2425,7 @@ class ClaudeCodeWeb {
         this._filesCurrentPath = path;
 
         try {
-            const response = await fetch(`/api/files?path=${encodeURIComponent(path)}`);
+            const response = await fetch(`/api/v1/files?path=${encodeURIComponent(path)}`);
             const data = await response.json();
 
             if (data.error) {
@@ -2501,7 +2501,7 @@ class ClaudeCodeWeb {
         viewer.innerHTML = '<div class="empty-state"><div class="loading"></div><p>Loading...</p></div>';
 
         try {
-            const response = await fetch(`/api/files/read?path=${encodeURIComponent(path)}`);
+            const response = await fetch(`/api/v1/files/read?path=${encodeURIComponent(path)}`);
             const data = await response.json();
 
             if (data.error) {
@@ -2541,7 +2541,7 @@ class ClaudeCodeWeb {
             diffBtn.addEventListener('click', () => {
                 this._showDiffView(diffBtn.dataset.project, diffBtn.dataset.rel, data.path);
             });
-            fetch(`/api/git/status?path=${encodeURIComponent(projectPath)}`)
+            fetch(`/api/v1/git/status?path=${encodeURIComponent(projectPath)}`)
                 .then(r => r.json())
                 .then(s => { if (s.is_git) diffBtn.style.display = ''; })
                 .catch(() => {});
@@ -2717,7 +2717,7 @@ class ClaudeCodeWeb {
         }
 
         try {
-            const response = await this.csrfFetch('/api/files/write', {
+            const response = await this.csrfFetch('/api/v1/files/write', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ path, content })
@@ -2757,7 +2757,7 @@ class ClaudeCodeWeb {
         viewer.innerHTML = '<div class="empty-state"><div class="loading"></div><p>Loading diff...</p></div>';
 
         try {
-            const response = await fetch(`/api/git/diff?path=${encodeURIComponent(projectPath)}&file=${encodeURIComponent(relativePath)}`);
+            const response = await fetch(`/api/v1/git/diff?path=${encodeURIComponent(projectPath)}&file=${encodeURIComponent(relativePath)}`);
             if (this._viewerMode !== 'diff') { this._viewerTransition = false; return; } // mode changed during fetch
             const data = await response.json();
 
@@ -2846,7 +2846,7 @@ class ClaudeCodeWeb {
             const editBtn = viewer.querySelector('.btn-edit');
             if (editBtn) {
                 editBtn.addEventListener('click', async () => {
-                    const resp = await fetch(`/api/files/read?path=${encodeURIComponent(fullPath)}`);
+                    const resp = await fetch(`/api/v1/files/read?path=${encodeURIComponent(fullPath)}`);
                     const fileData = await resp.json();
                     if (!fileData.error) this._enterEditMode(fullPath, fileData.content, fileData.language);
                 });
@@ -2882,7 +2882,7 @@ class ClaudeCodeWeb {
 
     async loadCurrentUser() {
         try {
-            const response = await fetch('/api/auth/whoami');
+            const response = await fetch('/api/v1/auth/whoami');
             if (response.ok) {
                 this._currentUser = await response.json();
                 // Show username in sidebar
@@ -2906,7 +2906,7 @@ class ClaudeCodeWeb {
         if (!list) return;
 
         try {
-            const response = await fetch('/api/users');
+            const response = await fetch('/api/v1/users');
             if (!response.ok) {
                 list.innerHTML = '<div style="color:var(--text-secondary); font-size:0.85rem;">Admin access required to manage users</div>';
                 return;
@@ -2952,7 +2952,7 @@ class ClaudeCodeWeb {
         }
 
         try {
-            const response = await this.csrfFetch('/api/users', {
+            const response = await this.csrfFetch('/api/v1/users', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password, role })
@@ -2977,7 +2977,7 @@ class ClaudeCodeWeb {
         if (!ok) return;
 
         try {
-            const response = await this.csrfFetch(`/api/users/${username}`, { method: 'DELETE' });
+            const response = await this.csrfFetch(`/api/v1/users/${username}`, { method: 'DELETE' });
             const data = await response.json();
             if (data.success) {
                 this.showToast(`User "${username}" deleted`, 'success');
@@ -2995,7 +2995,7 @@ class ClaudeCodeWeb {
     async deployClaudeMd(projectPath) {
         // Check if target already has a CLAUDE.md
         try {
-            const detectRes = await fetch(`/api/project/detect?path=${encodeURIComponent(projectPath)}`);
+            const detectRes = await fetch(`/api/v1/project/detect?path=${encodeURIComponent(projectPath)}`);
             if (detectRes.ok) {
                 const detectData = await detectRes.json();
                 if (detectData.has_claude_md) {
@@ -3013,7 +3013,7 @@ class ClaudeCodeWeb {
 
         // Fetch the server's own CLAUDE.md as the template
         try {
-            const res = await this.csrfFetch('/api/project/deploy-claude-md', {
+            const res = await this.csrfFetch('/api/v1/project/deploy-claude-md', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ path: projectPath }),
@@ -3045,7 +3045,7 @@ class ClaudeCodeWeb {
 
         // Call detect API
         try {
-            const res = await fetch(`/api/project/detect?path=${encodeURIComponent(projectPath)}`);
+            const res = await fetch(`/api/v1/project/detect?path=${encodeURIComponent(projectPath)}`);
             if (!res.ok) throw new Error('Detection failed');
             this._wizardDetectedData = await res.json();
 
@@ -3326,7 +3326,7 @@ class ClaudeCodeWeb {
         }
 
         try {
-            const res = await this.csrfFetch('/api/project/init', {
+            const res = await this.csrfFetch('/api/v1/project/init', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
@@ -3372,8 +3372,8 @@ class ClaudeCodeWeb {
 
         // Fetch SSH config and key info in parallel
         const [configRes, setupRes] = await Promise.all([
-            fetch('/api/remote/ssh-config').then(r => r.json()).catch(() => ({ hosts: [] })),
-            fetch('/api/remote/ssh-setup').then(r => r.json()).catch(() => ({ has_key: false })),
+            fetch('/api/v1/remote/ssh-config').then(r => r.json()).catch(() => ({ hosts: [] })),
+            fetch('/api/v1/remote/ssh-setup').then(r => r.json()).catch(() => ({ has_key: false })),
         ]);
 
         this._rwSshConfig = configRes.hosts || [];
@@ -3591,7 +3591,7 @@ class ClaudeCodeWeb {
             let setupRes = this._rwSshSetup;
             if (!setupRes?.has_key) {
                 update('key', 'active', 'Generating SSH key (ed25519)...');
-                const res = await this.csrfFetch('/api/remote/ssh-setup', {
+                const res = await this.csrfFetch('/api/v1/remote/ssh-setup', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({}),
@@ -3615,7 +3615,7 @@ class ClaudeCodeWeb {
         // Step 2: Test if key already authorized
         update('test', 'active', 'Testing key authentication...');
         try {
-            const testRes = await this.csrfFetch('/api/remote/test', {
+            const testRes = await this.csrfFetch('/api/v1/remote/test', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -3651,7 +3651,7 @@ class ClaudeCodeWeb {
 
         update('push', 'active', 'Pushing SSH key to remote...');
         try {
-            const pushRes = await this.csrfFetch('/api/remote/push-key', {
+            const pushRes = await this.csrfFetch('/api/v1/remote/push-key', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -3690,7 +3690,7 @@ class ClaudeCodeWeb {
         const nextBtn = document.getElementById('rw-next');
 
         try {
-            const res = await this.csrfFetch('/api/remote/test', {
+            const res = await this.csrfFetch('/api/v1/remote/test', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -3752,7 +3752,7 @@ class ClaudeCodeWeb {
         const port = parseInt(document.getElementById('rw-port').value) || 22;
 
         try {
-            const res = await this.csrfFetch('/api/remote/test', {
+            const res = await this.csrfFetch('/api/v1/remote/test', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -3846,7 +3846,7 @@ class ClaudeCodeWeb {
         const remoteHosts = [...(this.config.remote_hosts || []), host];
 
         try {
-            const res = await this.csrfFetch('/api/config', {
+            const res = await this.csrfFetch('/api/v1/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ remote_hosts: remoteHosts }),
@@ -3873,7 +3873,7 @@ class ClaudeCodeWeb {
         // Don't overwrite user edits
         if (textarea.dataset.isDefault !== 'true' && textarea.value.trim()) return;
         try {
-            const res = await fetch('/api/autonomous/go-command');
+            const res = await fetch('/api/v1/autonomous/go-command');
             if (res.ok) {
                 const data = await res.json();
                 textarea.value = data.content || '';
@@ -4000,7 +4000,7 @@ class ClaudeCodeWeb {
 
     async loadAgentLibrary() {
         try {
-            const response = await fetch('/api/agents/library');
+            const response = await fetch('/api/v1/agents/library');
             const data = await response.json();
             this._agentLibrary = Array.isArray(data) ? data : (data.agents || []);
             this._activeAgents = (this.config.active_agents || []).filter(
@@ -4187,7 +4187,7 @@ class ClaudeCodeWeb {
         };
 
         try {
-            const response = await this.csrfFetch('/api/config', {
+            const response = await this.csrfFetch('/api/v1/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
@@ -4220,7 +4220,7 @@ class ClaudeCodeWeb {
 
     async checkOnboarding() {
         try {
-            const resp = await fetch('/api/onboarding/status');
+            const resp = await fetch('/api/v1/onboarding/status');
             if (!resp.ok) return;
             const data = await resp.json();
             if (data.needs_onboarding) {
@@ -4389,7 +4389,7 @@ class ClaudeCodeWeb {
             const csrfResp = await fetch('/api/csrf-token');
             const { csrf_token } = await csrfResp.json();
 
-            const resp = await fetch('/api/user/api-key', {
+            const resp = await fetch('/api/v1/user/api-key', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -4438,7 +4438,7 @@ class ClaudeCodeWeb {
         list.appendChild(loading);
 
         try {
-            const resp = await fetch('/api/projects');
+            const resp = await fetch('/api/v1/projects');
             const data = await resp.json();
             const projects = data.projects || [];
 
@@ -4540,7 +4540,7 @@ class ClaudeCodeWeb {
             const csrfResp = await fetch('/api/csrf-token');
             const { csrf_token } = await csrfResp.json();
 
-            const resp = await fetch('/api/config', {
+            const resp = await fetch('/api/v1/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf_token },
                 body: JSON.stringify({ favorites }),
@@ -4561,7 +4561,7 @@ class ClaudeCodeWeb {
         try {
             const csrfResp = await fetch('/api/csrf-token');
             const { csrf_token } = await csrfResp.json();
-            await fetch('/api/onboarding/complete', {
+            await fetch('/api/v1/onboarding/complete', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf_token },
                 body: JSON.stringify({}),

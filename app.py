@@ -31,11 +31,16 @@ _vendor_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'vendor')
 if os.path.isdir(_vendor_dir):
     sys.path.insert(0, _vendor_dir)
 
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+from flask import Flask, Blueprint, render_template, request, jsonify, session, redirect, url_for
 from flask_socketio import SocketIO, emit
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
+
+# Versioned API blueprint — all /api/... routes (except health and csrf-token) are
+# registered here so they are served at both /api/v1/... (canonical) and /api/...
+# (backwards-compatible 308 redirect added after blueprint registration).
+api_v1 = Blueprint('api_v1', __name__, url_prefix='/api/v1')
 
 
 def _get_cors_origins():
@@ -1574,7 +1579,7 @@ def api_health():
     })
 
 
-@app.route('/api/engines')
+@api_v1.route('/engines')
 @login_required
 def api_engines():
     """List all registered AI engine adapters with their detection status."""
@@ -1599,7 +1604,7 @@ def logout():
     return redirect('/login')
 
 
-@app.route('/api/auth/status')
+@api_v1.route('/auth/status')
 def auth_status():
     """Public endpoint - check auth state"""
     auth_config = AUTH.get('auth', {})
@@ -1610,7 +1615,7 @@ def auth_status():
     })
 
 
-@app.route('/api/auth/setup', methods=['POST'])
+@api_v1.route('/auth/setup', methods=['POST'])
 def auth_setup():
     """First-run account setup"""
     # Rate limit: 5 attempts per IP per hour
@@ -1664,7 +1669,7 @@ def auth_setup():
     return jsonify({'success': True})
 
 
-@app.route('/api/projects')
+@api_v1.route('/projects')
 @login_required
 def api_projects():
     """Get list of projects"""
@@ -1700,7 +1705,7 @@ def api_projects():
     })
 
 
-@app.route('/api/projects/root', methods=['POST'])
+@api_v1.route('/projects/root', methods=['POST'])
 @login_required
 @csrf_protect
 def set_projects_root():
@@ -1720,7 +1725,7 @@ def set_projects_root():
     return jsonify({'success': False, 'error': 'Invalid directory'}), 400
 
 
-@app.route('/api/config', methods=['GET'])
+@api_v1.route('/config', methods=['GET'])
 @login_required
 def api_get_config():
     """Get current configuration"""
@@ -1743,7 +1748,7 @@ def api_get_config():
     })
 
 
-@app.route('/api/config', methods=['POST'])
+@api_v1.route('/config', methods=['POST'])
 @login_required
 @csrf_protect
 def api_update_config():
@@ -1795,7 +1800,7 @@ def api_update_config():
     return jsonify({'success': True})
 
 
-@app.route('/api/agents/library')
+@api_v1.route('/agents/library')
 @login_required
 def api_agents_library():
     """Return agent library metadata (without full content)"""
@@ -1812,7 +1817,7 @@ def api_agents_library():
     return jsonify({'agents': library})
 
 
-@app.route('/api/remote/test', methods=['POST'])
+@api_v1.route('/remote/test', methods=['POST'])
 @login_required
 @csrf_protect
 def api_test_remote():
@@ -1883,7 +1888,7 @@ def api_test_remote():
     return jsonify({'success': False, 'error': 'Invalid mode'}), 400
 
 
-@app.route('/api/remote/ssh-config')
+@api_v1.route('/remote/ssh-config')
 @login_required
 def api_ssh_config():
     """Parse ~/.ssh/config and return list of discovered hosts"""
@@ -1951,7 +1956,7 @@ def api_ssh_config():
     return jsonify({'hosts': hosts})
 
 
-@app.route('/api/remote/ssh-setup', methods=['GET', 'POST'])
+@api_v1.route('/remote/ssh-setup', methods=['GET', 'POST'])
 @login_required
 def api_ssh_setup():
     """GET: Return SSH public key info. POST: Generate new SSH key."""
@@ -2020,7 +2025,7 @@ def api_ssh_setup():
     })
 
 
-@app.route('/api/remote/push-key', methods=['POST'])
+@api_v1.route('/remote/push-key', methods=['POST'])
 @login_required
 @csrf_protect
 def api_push_key():
@@ -2100,7 +2105,7 @@ def api_push_key():
         })
 
 
-@app.route('/api/remote/<host_id>/projects')
+@api_v1.route('/remote/<host_id>/projects')
 @login_required
 def api_remote_projects(host_id):
     """List projects on a remote host"""
@@ -2286,7 +2291,7 @@ def _check_host_health(host):
     }
 
 
-@app.route('/api/hosts')
+@api_v1.route('/hosts')
 @login_required
 def api_hosts_list():
     """Return all configured remote hosts with their stored status."""
@@ -2294,7 +2299,7 @@ def api_hosts_list():
     return jsonify({'hosts': [_build_host_entry(h) for h in remote_hosts]})
 
 
-@app.route('/api/hosts/groups')
+@api_v1.route('/hosts/groups')
 @login_required
 def api_hosts_groups():
     """Return unique host groups with host counts."""
@@ -2310,7 +2315,7 @@ def api_hosts_groups():
     return jsonify({'groups': groups})
 
 
-@app.route('/api/hosts/<host_id>/health', methods=['POST'])
+@api_v1.route('/hosts/<host_id>/health', methods=['POST'])
 @login_required
 @csrf_protect
 def api_host_health(host_id):
@@ -2325,7 +2330,7 @@ def api_host_health(host_id):
     return jsonify(result), 200
 
 
-@app.route('/api/hosts/health', methods=['POST'])
+@api_v1.route('/hosts/health', methods=['POST'])
 @login_required
 @csrf_protect
 def api_hosts_health_batch():
@@ -2365,7 +2370,7 @@ def api_hosts_health_batch():
     return jsonify({'results': results})
 
 
-@app.route('/api/session/persistent')
+@api_v1.route('/session/persistent')
 @login_required
 def get_persistent_session():
     """Get or create the single persistent chat session"""
@@ -2401,7 +2406,7 @@ def get_persistent_session():
     return jsonify(chat_sessions[session_id])
 
 
-@app.route('/api/session/new', methods=['POST'])
+@api_v1.route('/session/new', methods=['POST'])
 @login_required
 def new_chat_session():
     """Create a new chat session"""
@@ -2444,7 +2449,7 @@ def new_chat_session():
     return jsonify(chat_sessions[session_id])
 
 
-@app.route('/api/session/<session_id>')
+@api_v1.route('/session/<session_id>')
 @login_required
 def get_session(session_id):
     """Get session details"""
@@ -2456,7 +2461,7 @@ def get_session(session_id):
     return jsonify({'error': 'Session not found'}), 404
 
 
-@app.route('/api/session/<session_id>/share', methods=['POST'])
+@api_v1.route('/session/<session_id>/share', methods=['POST'])
 @login_required
 @csrf_protect
 def share_session(session_id):
@@ -2497,7 +2502,7 @@ def share_session(session_id):
     return jsonify({'success': True, 'visibility': new_visibility})
 
 
-@app.route('/api/sessions')
+@api_v1.route('/sessions')
 @login_required
 def list_sessions():
     """List saved sessions visible to the current user.
@@ -3301,7 +3306,7 @@ def handle_chat_message(data):
 
 # ============== Export API ==============
 
-@app.route('/api/session/<session_id>/export')
+@api_v1.route('/session/<session_id>/export')
 @login_required
 def export_session(session_id):
     """Export a chat session as markdown"""
@@ -3346,7 +3351,7 @@ def export_session(session_id):
 
 # ============== Session Search API ==============
 
-@app.route('/api/sessions/search')
+@api_v1.route('/sessions/search')
 @login_required
 def search_sessions():
     """Search through session messages"""
@@ -3395,7 +3400,7 @@ def search_sessions():
 
 # ============== Git Integration API ==============
 
-@app.route('/api/git/status')
+@api_v1.route('/git/status')
 @login_required
 def api_git_status():
     """Get git status for a project path"""
@@ -3467,7 +3472,7 @@ def api_git_status():
     return jsonify(result_data)
 
 
-@app.route('/api/git/diff')
+@api_v1.route('/git/diff')
 @login_required
 def api_git_diff():
     """Get git diff for a project path, optionally filtered to a single file"""
@@ -3606,7 +3611,7 @@ def validate_file_path(path_str):
     return any(resolved == a or resolved.startswith(a + '/') for a in allowed)
 
 
-@app.route('/api/files')
+@api_v1.route('/files')
 @login_required
 def api_list_files():
     """List files in a directory"""
@@ -3656,7 +3661,7 @@ def api_list_files():
     return jsonify({'items': items, 'path': path, 'parent': parent})
 
 
-@app.route('/api/autonomous/go-command')
+@api_v1.route('/autonomous/go-command')
 @login_required
 def api_autonomous_go_command():
     """Return the content of .claude/commands/go.md for the autonomous mode task textarea.
@@ -3672,7 +3677,7 @@ def api_autonomous_go_command():
         return jsonify({'error': 'Failed to read go.md'}), 500
 
 
-@app.route('/api/files/read')
+@api_v1.route('/files/read')
 @login_required
 def api_read_file():
     """Read a file's content"""
@@ -3741,7 +3746,7 @@ def api_read_file():
         return jsonify({'error': 'Failed to read file'}), 500
 
 
-@app.route('/api/files/write', methods=['POST'])
+@api_v1.route('/files/write', methods=['POST'])
 @login_required
 @csrf_protect
 def api_write_file():
@@ -4078,7 +4083,7 @@ def _session_visible_to(session_data: dict, username: str, role: str) -> bool:
     return (not owner) or (owner == username) or (role == 'admin')
 
 
-@app.route('/api/users')
+@api_v1.route('/users')
 @login_required
 def api_list_users():
     """List all users (admin only)"""
@@ -4092,7 +4097,7 @@ def api_list_users():
     return jsonify({'users': safe_users})
 
 
-@app.route('/api/users', methods=['POST'])
+@api_v1.route('/users', methods=['POST'])
 @login_required
 @csrf_protect
 def api_create_user():
@@ -4128,7 +4133,7 @@ def api_create_user():
     return jsonify({'success': True})
 
 
-@app.route('/api/users/<username>', methods=['DELETE'])
+@api_v1.route('/users/<username>', methods=['DELETE'])
 @login_required
 @csrf_protect
 def api_delete_user(username):
@@ -4147,7 +4152,7 @@ def api_delete_user(username):
     return jsonify({'success': True})
 
 
-@app.route('/api/users/<username>/password', methods=['POST'])
+@api_v1.route('/users/<username>/password', methods=['POST'])
 @login_required
 @csrf_protect
 def api_change_user_password(username):
@@ -4176,7 +4181,7 @@ def api_change_user_password(username):
     return jsonify({'error': 'User not found'}), 404
 
 
-@app.route('/api/auth/whoami')
+@api_v1.route('/auth/whoami')
 @login_required
 def api_whoami():
     """Return current user info"""
@@ -4186,7 +4191,7 @@ def api_whoami():
     return jsonify({'username': 'anonymous', 'role': 'admin'})
 
 
-@app.route('/api/user/role')
+@api_v1.route('/user/role')
 @login_required
 def api_user_role():
     """Return the current user's role."""
@@ -4196,7 +4201,7 @@ def api_user_role():
     return jsonify({'username': 'anonymous', 'role': 'user'})
 
 
-@app.route('/api/user/quota')
+@api_v1.route('/user/quota')
 @login_required
 def api_user_quota():
     """Return the current user's quota limits and current usage.
@@ -4220,7 +4225,7 @@ def api_user_quota():
     })
 
 
-@app.route('/api/admin/quotas', methods=['GET'])
+@api_v1.route('/admin/quotas', methods=['GET'])
 @login_required
 @admin_required
 def api_admin_get_quotas():
@@ -4241,7 +4246,7 @@ def api_admin_get_quotas():
     })
 
 
-@app.route('/api/admin/quotas', methods=['POST'])
+@api_v1.route('/admin/quotas', methods=['POST'])
 @login_required
 @admin_required
 @csrf_protect
@@ -4299,7 +4304,7 @@ def api_admin_set_quotas():
 
 # ---- Account Lockout Admin Endpoints ----
 
-@app.route('/api/admin/lockouts')
+@api_v1.route('/admin/lockouts')
 @login_required
 @admin_required
 def api_list_lockouts():
@@ -4323,7 +4328,7 @@ def api_list_lockouts():
     return jsonify({'lockouts': result})
 
 
-@app.route('/api/admin/unlock-ip', methods=['POST'])
+@api_v1.route('/admin/unlock-ip', methods=['POST'])
 @login_required
 @admin_required
 @csrf_protect
@@ -4341,7 +4346,7 @@ def api_unlock_ip():
     return jsonify({'success': True, 'ip': ip})
 
 
-@app.route('/api/user/api-key', methods=['POST'])
+@api_v1.route('/user/api-key', methods=['POST'])
 @login_required
 @csrf_protect
 def api_store_api_key():
@@ -4381,7 +4386,7 @@ def api_store_api_key():
     return jsonify({'success': True})
 
 
-@app.route('/api/user/api-key', methods=['DELETE'])
+@api_v1.route('/user/api-key', methods=['DELETE'])
 @login_required
 @csrf_protect
 def api_delete_api_key():
@@ -4403,7 +4408,7 @@ def api_delete_api_key():
     return jsonify({'success': True})
 
 
-@app.route('/api/user/api-key', methods=['GET'])
+@api_v1.route('/user/api-key', methods=['GET'])
 @login_required
 def api_get_api_key():
     """Return masked API key status for the current user.
@@ -4436,7 +4441,7 @@ def api_get_api_key():
 
 # ============== Per-User Claude Credential API ==============
 
-@app.route('/api/user/claude-status')
+@api_v1.route('/user/claude-status')
 @login_required
 def api_user_claude_status():
     """Return whether the current user has Claude credentials configured.
@@ -4476,7 +4481,7 @@ def api_user_claude_status():
     })
 
 
-@app.route('/api/user/claude-logout', methods=['POST'])
+@api_v1.route('/user/claude-logout', methods=['POST'])
 @login_required
 @csrf_protect
 def api_user_claude_logout():
@@ -4503,7 +4508,7 @@ def api_user_claude_logout():
 
 # ============== Onboarding API ==============
 
-@app.route('/api/onboarding/status')
+@api_v1.route('/onboarding/status')
 @login_required
 def api_onboarding_status():
     """Return onboarding state for the current user.
@@ -4571,7 +4576,7 @@ def api_onboarding_status():
     return jsonify({'needs_onboarding': needs_onboarding, 'steps': steps})
 
 
-@app.route('/api/onboarding/complete', methods=['POST'])
+@api_v1.route('/onboarding/complete', methods=['POST'])
 @login_required
 @csrf_protect
 def api_onboarding_complete():
@@ -4624,7 +4629,7 @@ def _build_user_usage_response(user_stats: dict, model: str = 'sonnet') -> dict:
     return resp
 
 
-@app.route('/api/usage')
+@api_v1.route('/usage')
 @login_required
 def api_usage():
     """Get usage statistics for the current user.
@@ -4669,7 +4674,7 @@ def api_usage():
     return jsonify(response)
 
 
-@app.route('/api/usage/summary')
+@api_v1.route('/usage/summary')
 @login_required
 def api_usage_summary():
     """Return aggregated usage summary.
@@ -4732,7 +4737,7 @@ def api_usage_summary():
     return jsonify(summary)
 
 
-@app.route('/api/terminals')
+@api_v1.route('/terminals')
 @login_required
 def api_terminals():
     """List active terminals (attached to PTY)"""
@@ -4747,7 +4752,7 @@ def api_terminals():
     return jsonify({'terminals': terminals})
 
 
-@app.route('/api/tmux/sessions')
+@api_v1.route('/tmux/sessions')
 @login_required
 def api_tmux_sessions():
     """List all persistent tmux sessions (attached and detached)"""
@@ -4768,7 +4773,7 @@ def api_tmux_sessions():
 
 # ============== Project Instructions Wizard API ==============
 
-@app.route('/api/project/detect')
+@api_v1.route('/project/detect')
 @login_required
 def api_project_detect():
     """Auto-detect project type and pre-fill wizard data"""
@@ -4923,7 +4928,7 @@ def api_project_detect():
     return jsonify(result)
 
 
-@app.route('/api/project/init', methods=['POST'])
+@api_v1.route('/project/init', methods=['POST'])
 @login_required
 @csrf_protect
 def api_project_init():
@@ -4996,7 +5001,7 @@ def api_project_init():
     return jsonify({'success': True, 'path': claude_md_path})
 
 
-@app.route('/api/project/deploy-claude-md', methods=['POST'])
+@api_v1.route('/project/deploy-claude-md', methods=['POST'])
 @login_required
 @csrf_protect
 def api_project_deploy_claude_md():
@@ -5092,7 +5097,7 @@ def get_claude_version():
         return None
 
 
-@app.route('/api/status')
+@api_v1.route('/status')
 @login_required
 def api_status():
     """Get system status"""
@@ -5119,7 +5124,7 @@ def api_status():
     })
 
 
-@app.route('/api/changelog')
+@api_v1.route('/changelog')
 @login_required
 def api_changelog():
     """Return changelog content"""
@@ -5132,7 +5137,7 @@ def api_changelog():
         return jsonify({'content': '# Changelog\n\nNo changelog available.'})
 
 
-@app.route('/api/state')
+@api_v1.route('/state')
 @login_required
 def api_state():
     """Get active process state for reconnection sync"""
@@ -5157,7 +5162,7 @@ def api_state():
     })
 
 
-@app.route('/api/maintenance/cleanup', methods=['POST'])
+@api_v1.route('/maintenance/cleanup', methods=['POST'])
 @login_required
 @csrf_protect
 def api_cleanup():
@@ -5166,7 +5171,7 @@ def api_cleanup():
     return jsonify({'status': 'cleanup complete'})
 
 
-@app.route('/api/maintenance/backup', methods=['POST'])
+@api_v1.route('/maintenance/backup', methods=['POST'])
 @login_required
 @csrf_protect
 def api_backup():
@@ -5315,7 +5320,7 @@ def _tunnel_atexit():
 atexit.register(_tunnel_atexit)
 
 
-@app.route('/api/tunnel/status')
+@api_v1.route('/tunnel/status')
 @login_required
 def api_tunnel_status():
     """Get Cloudflare tunnel status.
@@ -5328,7 +5333,7 @@ def api_tunnel_status():
     return jsonify(_tunnel_status())
 
 
-@app.route('/api/tunnel/start', methods=['POST'])
+@api_v1.route('/tunnel/start', methods=['POST'])
 @login_required
 @admin_required
 @csrf_protect
@@ -5356,7 +5361,7 @@ def api_tunnel_start():
     return jsonify({'running': True, 'url': url})
 
 
-@app.route('/api/tunnel/stop', methods=['POST'])
+@api_v1.route('/tunnel/stop', methods=['POST'])
 @login_required
 @admin_required
 @csrf_protect
@@ -5370,6 +5375,31 @@ def api_tunnel_stop():
     audit_log('tunnel_stop', session.get('username', ''), request.remote_addr,
               result='success')
     return jsonify({'running': False, 'url': None})
+
+
+# ============== API Blueprint Registration ==============
+
+@api_v1.after_request
+def add_api_version_header(response):
+    """Attach X-API-Version header to every versioned API response."""
+    response.headers['X-API-Version'] = '1'
+    return response
+
+
+# Register the versioned blueprint — all routes are now available at /api/v1/...
+app.register_blueprint(api_v1)
+
+
+@app.route('/api/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
+def api_legacy_redirect(path):
+    """308 redirect from legacy /api/<path> to /api/v1/<path>.
+
+    308 Permanent Redirect preserves the original HTTP method and body,
+    so POST/PUT/DELETE calls from older clients continue to work correctly.
+    The unversioned /api/health and /api/csrf-token routes are registered
+    directly on the app and are matched before this catch-all.
+    """
+    return redirect(f'/api/v1/{path}', code=308)
 
 
 # ============== Main ==============

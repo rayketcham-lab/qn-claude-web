@@ -206,7 +206,7 @@ class TestTunnelStartRequiresAdmin(unittest.TestCase):
         _enable_auth_admin()
         with flask_app.test_client() as client:
             headers = _csrf_headers(client)
-            resp = client.post('/api/tunnel/start',
+            resp = client.post('/api/v1/tunnel/start',
                                headers=headers,
                                content_type='application/json')
         self.assertEqual(resp.status_code, 401)
@@ -217,7 +217,7 @@ class TestTunnelStartRequiresAdmin(unittest.TestCase):
         with flask_app.test_client() as client:
             _login(client, 'regularUser', 'userpass123')
             headers = _csrf_headers(client)
-            resp = client.post('/api/tunnel/start',
+            resp = client.post('/api/v1/tunnel/start',
                                headers=headers,
                                content_type='application/json')
         self.assertEqual(resp.status_code, 403)
@@ -229,7 +229,7 @@ class TestTunnelStartRequiresAdmin(unittest.TestCase):
             _login(client, 'tunnelAdmin', 'adminpass123')
             headers = _csrf_headers(client)
             with patch('app._shutil.which', return_value=None):
-                resp = client.post('/api/tunnel/start',
+                resp = client.post('/api/v1/tunnel/start',
                                    headers=headers,
                                    content_type='application/json')
         self.assertEqual(resp.status_code, 503)
@@ -241,7 +241,7 @@ class TestTunnelStartRequiresAdmin(unittest.TestCase):
         _enable_auth_admin()
         with flask_app.test_client() as client:
             _login(client, 'tunnelAdmin', 'adminpass123')
-            resp = client.post('/api/tunnel/start',
+            resp = client.post('/api/v1/tunnel/start',
                                data=json.dumps({}),
                                content_type='application/json')
         self.assertEqual(resp.status_code, 403)
@@ -265,7 +265,7 @@ class TestTunnelStopRequiresAdmin(unittest.TestCase):
         _enable_auth_admin()
         with flask_app.test_client() as client:
             headers = _csrf_headers(client)
-            resp = client.post('/api/tunnel/stop',
+            resp = client.post('/api/v1/tunnel/stop',
                                headers=headers,
                                content_type='application/json')
         self.assertEqual(resp.status_code, 401)
@@ -276,7 +276,7 @@ class TestTunnelStopRequiresAdmin(unittest.TestCase):
         with flask_app.test_client() as client:
             _login(client, 'regularUser', 'userpass123')
             headers = _csrf_headers(client)
-            resp = client.post('/api/tunnel/stop',
+            resp = client.post('/api/v1/tunnel/stop',
                                headers=headers,
                                content_type='application/json')
         self.assertEqual(resp.status_code, 403)
@@ -286,7 +286,7 @@ class TestTunnelStopRequiresAdmin(unittest.TestCase):
         _enable_auth_admin()
         with flask_app.test_client() as client:
             _login(client, 'tunnelAdmin', 'adminpass123')
-            resp = client.post('/api/tunnel/stop',
+            resp = client.post('/api/v1/tunnel/stop',
                                data=json.dumps({}),
                                content_type='application/json')
         self.assertEqual(resp.status_code, 403)
@@ -298,7 +298,7 @@ class TestTunnelStopRequiresAdmin(unittest.TestCase):
             _login(client, 'tunnelAdmin', 'adminpass123')
             headers = _csrf_headers(client)
             with patch('app._shutil.which', return_value='/usr/local/bin/cloudflared'):
-                resp = client.post('/api/tunnel/stop',
+                resp = client.post('/api/v1/tunnel/stop',
                                    data=json.dumps({}),
                                    headers=headers,
                                    content_type='application/json')
@@ -329,7 +329,7 @@ class TestTunnelStatusEndpoint(unittest.TestCase):
         """GET /api/tunnel/status returns 401 when auth is enabled and not logged in."""
         _enable_auth_admin()
         with flask_app.test_client() as client:
-            resp = client.get('/api/tunnel/status')
+            resp = client.get('/api/v1/tunnel/status')
         self.assertEqual(resp.status_code, 401)
 
     def test_status_endpoint_cloudflared_not_available(self):
@@ -337,7 +337,7 @@ class TestTunnelStatusEndpoint(unittest.TestCase):
         _disable_auth()
         with flask_app.test_client() as client:
             with patch('app._shutil.which', return_value=None):
-                resp = client.get('/api/tunnel/status')
+                resp = client.get('/api/v1/tunnel/status')
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         self.assertFalse(data['available'])
@@ -349,7 +349,7 @@ class TestTunnelStatusEndpoint(unittest.TestCase):
         _disable_auth()
         with flask_app.test_client() as client:
             with patch('app._shutil.which', return_value='/usr/local/bin/cloudflared'):
-                resp = client.get('/api/tunnel/status')
+                resp = client.get('/api/v1/tunnel/status')
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         self.assertTrue(data['available'])
