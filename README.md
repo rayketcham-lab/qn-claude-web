@@ -326,6 +326,20 @@ Self-signed certificates require a browser trust exception. For production use, 
 
 ---
 
+## Contributing
+
+We welcome contributions. Before submitting a PR:
+
+```bash
+ruff check .                   # Lint
+ruff format --check .          # Format
+python -m pytest               # Tests
+```
+
+All commits follow [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `ci:`, `security:`.
+
+---
+
 ## Disclaimer
 
 This project is not affiliated with, endorsed by, or sponsored by Anthropic, PBC. "Claude" and "Claude Code" are trademarks of Anthropic, PBC. This is an independent, community-developed web interface that works with the Claude Code CLI. Use requires a valid Claude subscription and the Claude Code CLI installed locally.
