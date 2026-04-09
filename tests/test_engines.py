@@ -62,11 +62,13 @@ def _disable_auth():
 
 def _enable_auth(username='admin', password='adminpass1'):
     pw_hash = generate_password_hash(password)
-    app_module.CONFIG['auth'] = {
+    auth_data = {
         'enabled': True,
         'username': username,
         'password_hash': pw_hash,
     }
+    app_module.CONFIG['auth'] = auth_data
+    app_module.AUTH['auth'] = auth_data
     app_module.CONFIG['users'] = [
         {'username': username, 'password_hash': pw_hash, 'role': 'admin'}
     ]

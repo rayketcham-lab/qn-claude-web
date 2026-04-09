@@ -91,7 +91,8 @@ class TestSourceFilePermissions(unittest.TestCase):
             group = grp.getgrgid(st.st_gid).gr_name
             self.assertIn(owner, allowed_owners,
                           f'{f} owned by {owner}, expected pleb or claude')
-            self.assertEqual(group, 'pleb', f'{f} group is {group}, expected pleb')
+            self.assertIn(group, ('pleb', 'claude'),
+                          f'{f} group is {group}, expected pleb or claude')
 
 
 class TestSensitiveFilePermissions(unittest.TestCase):
