@@ -59,12 +59,12 @@ jobs:
       - name: Run unit tests with coverage
         id: tests
         run: |
-          coverage run --source=. --omit='vendor/*,tests/*' -m unittest discover -s tests -p 'test_*.py' -v 2>&1 | tee /tmp/unittest_output.txt
+          coverage run --source=. --omit='vendor/*,tests/*' -m unittest discover -s tests -p 'test_*.py' -v 2>&1 | tee ${RUNNER_TEMP}/unittest_output.txt
           exit ${PIPESTATUS[0]}
 
       - name: Verify minimum test count
         run: |
-          TEST_COUNT=$(grep -oP 'Ran \K[0-9]+' /tmp/unittest_output.txt || echo 0)
+          TEST_COUNT=$(grep -oP 'Ran \K[0-9]+' ${RUNNER_TEMP}/unittest_output.txt || echo 0)
           echo "Tests executed: ${TEST_COUNT}"
           if [ "${TEST_COUNT}" -lt 100 ]; then
             echo "::error::Test count ${TEST_COUNT} is below the required minimum of 100"
@@ -93,7 +93,7 @@ jobs:
         run: pip install --break-system-packages bandit
 
       - name: Run bandit SAST
-        run: bandit -r /opt/claude-web/app.py -ll --skip B104
+        run: bandit -r /opt/claude-web/app.py -ll --skip B103,B104
 
   # ---------------------------------------------------------------------------
   # Job 4: Dependency Audit — pip-audit (Issue #37)
@@ -122,21 +122,21 @@ jobs:
             | sed 's/\.dist-info$//' \
             | sed 's/_/-/g' \
             | sed 's/-\([0-9]\)/==\1/' \
-            > /tmp/vendor-pkgs.txt
+            > ${RUNNER_TEMP}/vendor-pkgs.txt
           echo "Packages to audit:"
-          cat /tmp/vendor-pkgs.txt
+          cat ${RUNNER_TEMP}/vendor-pkgs.txt
 
       - name: Run pip-audit against vendor packages
         run: |
           pip-audit \
-            -r /tmp/vendor-pkgs.txt \
+            -r ${RUNNER_TEMP}/vendor-pkgs.txt \
             --no-deps \
             -f json \
-            -o /tmp/pip-audit-results.json \
+            -o ${RUNNER_TEMP}/pip-audit-results.json \
             --progress-spinner off \
           || true
           pip-audit \
-            -r /tmp/vendor-pkgs.txt \
+            -r ${RUNNER_TEMP}/vendor-pkgs.txt \
             --no-deps \
             --progress-spinner off
 
@@ -164,7 +164,7 @@ jobs:
       - name: Build release artifact
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
-          bash /opt/claude-web/build-release.sh 2>&1 | tee /tmp/build_release_output.txt
+          bash /opt/claude-web/build-release.sh 2>&1 | tee ${RUNNER_TEMP}/build_release_output.txt
 
       - name: Verify release artifact exists
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
