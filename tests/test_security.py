@@ -1052,7 +1052,7 @@ class TestTerminalReconnectTOCTOU(unittest.TestCase):
             source = f.read()
         # Find the reconnect handler
         idx = source.find('def handle_terminal_reconnect')
-        func_body = source[idx:idx + 1600]
+        func_body = source[idx:idx + 2500]
         # The reservation (active_terminals[terminal_id]) must be inside the
         # with active_terminals_lock: block
         lock_start = func_body.find('with active_terminals_lock:')
@@ -1161,8 +1161,9 @@ class TestConfigThreadSafety(unittest.TestCase):
     """Verify CONFIG has a threading lock and save_config is thread-safe."""
 
     def test_config_lock_exists(self):
-        from app import config_lock
         import threading
+
+        from app import config_lock
         self.assertIsInstance(config_lock, type(threading.Lock()))
 
     def test_save_config_uses_lock(self):
@@ -1231,8 +1232,9 @@ class TestChatProcessLock(unittest.TestCase):
 
     def test_active_chat_lock_exists(self):
         """active_chat_processes must have a corresponding lock."""
-        from app import active_chat_lock
         import threading
+
+        from app import active_chat_lock
         self.assertIsInstance(active_chat_lock, type(threading.Lock()))
 
     def test_lock_used_at_mutation_sites(self):
@@ -1379,7 +1381,7 @@ class TestCorsOrigins(unittest.TestCase):
 
     def test_cors_custom_origins_from_config(self):
         """When cors_origins is set in CONFIG, those are returned."""
-        from app import _get_cors_origins, CONFIG
+        from app import CONFIG, _get_cors_origins
         original = CONFIG.get('cors_origins')
         try:
             CONFIG['cors_origins'] = ['https://example.com:5001']

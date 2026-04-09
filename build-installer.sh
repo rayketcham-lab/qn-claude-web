@@ -35,6 +35,8 @@ PROJECT_FILES=(
     "maintenance.sh"
     "start.sh"
     "qn-code-assistant.service"
+    "build-installer.sh"
+    "build-release.sh"
 )
 
 # Determine sha256 command

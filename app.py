@@ -4,26 +4,26 @@ QN Code Assistant
 A full-featured web frontend for Claude Code CLI
 """
 
-import hashlib
+import atexit
+import copy
 import hmac
-import os
-import sys
 import json
 import logging
+import os
 import pty
 import re
 import secrets
 import select
 import shlex
+import signal
 import subprocess
+import sys
 import tempfile
 import threading
-import uuid
-import signal
-import atexit
 import time
+import uuid
+from datetime import datetime, timedelta, timezone
 from functools import wraps
-from datetime import datetime, timedelta
 from pathlib import Path
 
 # Use vendored dependencies if available (self-contained mode)
@@ -31,9 +31,9 @@ _vendor_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'vendor')
 if os.path.isdir(_vendor_dir):
     sys.path.insert(0, _vendor_dir)
 
-from flask import Flask, Blueprint, render_template, request, jsonify, session, redirect, url_for
+from flask import Blueprint, Flask, jsonify, redirect, render_template, request, session
 from flask_socketio import SocketIO, emit
-from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 
 app = Flask(__name__)
 
@@ -43,21 +43,23 @@ app = Flask(__name__)
 api_v1 = Blueprint('api_v1', __name__, url_prefix='/api/v1')
 
 
-def _get_cors_origins():
-    """Build CORS origin list from config. Returns list of allowed origins
-    or '*' only if explicitly configured (never default to wildcard)."""
+def _get_cors_origins(origin=None, environ=None):
+    """CORS origin callback for engineio. Called with (origin, environ) or (origin,).
+    Returns True/False when called as a callback, or a list when called directly."""
     origins = CONFIG.get('cors_origins', [])
-    if origins:
-        return origins
-    # Default: allow same-origin requests from any interface on the configured port
-    port = CONFIG.get('port', 5001)
-    ssl = CONFIG.get('ssl_enabled', False)
-    scheme = 'https' if ssl else 'http'
-    return [
-        f'{scheme}://localhost:{port}',
-        f'{scheme}://127.0.0.1:{port}',
-        f'{scheme}://192.168.1.241:{port}',
-    ]
+    if not origins:
+        port = CONFIG.get('port', 5001)
+        ssl = CONFIG.get('ssl_enabled', False)
+        scheme = 'https' if ssl else 'http'
+        origins = [
+            f'{scheme}://localhost:{port}',
+            f'{scheme}://127.0.0.1:{port}',
+            f'{scheme}://192.168.1.241:{port}',
+        ]
+    # When called as engineio callback, check if origin is allowed
+    if origin is not None:
+        return origin in origins
+    return origins
 
 
 socketio = SocketIO(app, cors_allowed_origins=_get_cors_origins,
@@ -99,7 +101,7 @@ def audit_log(event: str, user: str, ip: str = '', result: str = 'ok', detail: d
         detail: Optional dict of extra event-specific fields.
     """
     entry = {
-        'ts': datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+        'ts': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
         'event': event,
         'user': user,
         'ip': ip,
@@ -111,7 +113,7 @@ def audit_log(event: str, user: str, ip: str = '', result: str = 'ok', detail: d
 
 
 # Version info
-VERSION = "1.6.0"
+VERSION = "2.0.0"
 START_TIME = datetime.now()
 
 # Regex to filter out DA (Device Attributes) query responses that cause terminal display garbage
@@ -181,7 +183,7 @@ def check_lockout(ip: str):
     Returns (allowed: bool, retry_after_seconds: int).
     ``retry_after_seconds`` is 0 when allowed or permanently locked (no ETA).
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     with _lockout_lock:
         state = _lockout_store.get(ip)
         if state is None:
@@ -200,7 +202,7 @@ def check_lockout(ip: str):
 
 def record_failed_login(ip: str):
     """Record a failed login attempt for *ip* and apply lockout tiers if thresholds are crossed."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     now_ts = now.timestamp()
 
     with _lockout_lock:
@@ -286,6 +288,8 @@ def load_config():
         'team_mode': False,
         'user_quotas': {'daily': 0, 'weekly': 0},
         'role_quotas': {},
+        'disconnect_grace_secs': 30,
+        'ssh_strict_host_key': 'accept-new',
     }
     if CONFIG_FILE.exists():
         try:
@@ -305,6 +309,7 @@ def load_config():
         ('max_concurrent_terminals', int, 5),
         ('max_concurrent_chats', int, 10),
         ('session_timeout_hours', int, 24),
+        ('disconnect_grace_secs', int, 30),
     ]:
         try:
             defaults[key] = expected_type(defaults.get(key, fallback))
@@ -341,9 +346,10 @@ def save_config(config_dict):
 
 
 def _write_auth_file(auth_dict):
-    """Write auth.json atomically with mode 0600 (owner-read/write only).
+    """Write auth.json atomically with mode 0660 (owner+group read/write).
 
     Uses a temp-file + rename dance to avoid partial reads during writes.
+    Group access allows the dev user (in the pleb group) to read/modify.
     """
     auth_path = str(AUTH_FILE)
     try:
@@ -351,7 +357,7 @@ def _write_auth_file(auth_dict):
         try:
             with os.fdopen(fd, 'w') as f:
                 json.dump(auth_dict, f, indent=2)
-            os.chmod(tmp_path, 0o600)
+            os.chmod(tmp_path, 0o660)
             os.replace(tmp_path, auth_path)
         except Exception:
             try:
@@ -364,9 +370,13 @@ def _write_auth_file(auth_dict):
 
 
 def save_auth(auth_dict):
-    """Persist auth credentials to auth.json (thread-safe via auth_lock)."""
+    """Persist auth credentials to auth.json and update in-memory AUTH (thread-safe)."""
+    snapshot = copy.deepcopy(auth_dict)
     with auth_lock:
-        _write_auth_file(auth_dict)
+        _write_auth_file(snapshot)
+        # Sync the global AUTH dict so the running app sees the change immediately
+        AUTH.clear()
+        AUTH.update(snapshot)
 
 
 def load_auth():
@@ -456,6 +466,17 @@ if CONFIG.get('ssl_enabled', False):
     app.config['SESSION_COOKIE_SECURE'] = True
 
 
+@app.before_request
+def enforce_allowed_hosts():
+    """Validate Host header against allowed_hosts config to prevent DNS rebinding."""
+    allowed = CONFIG.get('allowed_hosts', ['*'])
+    if '*' in allowed:
+        return  # Wildcard allows all hosts
+    host = request.host.split(':')[0]  # Strip port
+    if host not in allowed and request.host not in allowed:
+        return jsonify({'error': 'Host not allowed'}), 403
+
+
 @app.after_request
 def add_security_headers(response):
     """Add security headers to all responses"""
@@ -465,6 +486,8 @@ def add_security_headers(response):
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
 
     # Content-Security-Policy: allow CDN scripts for xterm, socketio, marked, hljs
+    # style-src 'unsafe-inline' is required by xterm.js (inline style injection for
+    # terminal rendering) and cannot be removed without breaking the terminal.
     # Build connect-src from configured origins instead of allowing all
     host = request.host.split(':')[0]
     port = CONFIG.get('port', 5001)
@@ -502,7 +525,7 @@ def _generate_csrf_token():
 
 def _validate_csrf_token():
     """Validate CSRF token from request header or form data."""
-    token = request.headers.get('X-CSRF-Token') or (request.json or {}).get('_csrf_token', '')
+    token = request.headers.get('X-CSRF-Token') or (request.get_json(silent=True) or {}).get('_csrf_token', '')
     expected = session.get('csrf_token', '')
     if not expected or not token:
         return False
@@ -510,12 +533,13 @@ def _validate_csrf_token():
 
 
 def csrf_protect(f):
-    """Decorator to require CSRF token on state-changing endpoints."""
+    """Decorator to require CSRF token on state-changing endpoints.
+
+    CSRF is enforced regardless of auth state — Flask sessions (and thus
+    CSRF tokens) work via cookies and do not depend on authentication.
+    """
     @wraps(f)
     def decorated(*args, **kwargs):
-        auth_config = AUTH.get('auth', {})
-        if not auth_config.get('enabled', False):
-            return f(*args, **kwargs)
         if not _validate_csrf_token():
             return jsonify({'error': 'CSRF token missing or invalid'}), 403
         return f(*args, **kwargs)
@@ -668,7 +692,10 @@ def login_required(f):
         login_time = session.get('login_time')
         if login_time:
             timeout_hours = CONFIG.get('session_timeout_hours', 24)
-            elapsed = (datetime.utcnow() - datetime.fromisoformat(login_time)).total_seconds()
+            parsed_login = datetime.fromisoformat(login_time)
+            if parsed_login.tzinfo is None:
+                parsed_login = parsed_login.replace(tzinfo=timezone.utc)
+            elapsed = (datetime.now(timezone.utc) - parsed_login).total_seconds()
             if elapsed > timeout_hours * 3600:
                 session.clear()
                 if request.is_json or request.path.startswith('/api/'):
@@ -698,10 +725,12 @@ chat_sessions = {}
 chat_sessions_lock = threading.Lock()
 
 # Disconnect grace period — transient reconnections don't kill PTY
-DISCONNECT_GRACE_SECS = 30
+# Configurable via config.json key 'disconnect_grace_secs' (default 30)
 pending_disconnects = {}        # ws_sid -> threading.Timer
 pending_disconnect_lock = threading.Lock()
 browser_to_sid = {}             # browser_id -> ws_sid
+browser_id_owners = {}          # browser_id -> username (server-side ownership binding)
+browser_id_owners_lock = threading.Lock()
 
 # Watchdog thread
 watchdog_running = True
@@ -722,7 +751,7 @@ def _tmux_list_sessions():
     """List all QN-managed tmux sessions with their status."""
     result = subprocess.run(
         [TMUX_BIN, 'list-sessions', '-F',
-         '#{session_name}|#{session_created}|#{session_attached}|#{pane_pid}'],
+         '#{session_name}|#{session_created}|#{session_attached}|#{pane_pid}|#{session_activity}'],
         capture_output=True, text=True,
     )
     if result.returncode != 0:
@@ -738,6 +767,7 @@ def _tmux_list_sessions():
                 'created': int(parts[1]) if parts[1].isdigit() else 0,
                 'attached': int(parts[2]) if parts[2].isdigit() else 0,
                 'pane_pid': int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else None,
+                'activity': int(parts[4]) if len(parts) > 4 and parts[4].isdigit() else 0,
             })
     return sessions
 
@@ -854,9 +884,9 @@ def _reap_tmux_sessions():
             _tmux_kill_session(name)
             continue
 
-        # Reap if detached longer than timeout
-        created = s.get('created', 0)
-        if created and (now - created) > timeout_secs:
+        # Reap if idle (no activity) longer than timeout
+        last_activity = s.get('activity', 0) or s.get('created', 0)
+        if last_activity and (now - last_activity) > timeout_secs:
             logger.info("Reaping tmux session %s (detached > %dh)", name, timeout_hours)
             _tmux_kill_session(name)
 
@@ -915,7 +945,9 @@ def shutdown_cleanup():
     with active_terminals_lock:
         for tid, term in list(active_terminals.items()):
             try:
-                os.kill(term['pid'], signal.SIGTERM)
+                pid = term.get('pid')
+                if pid:
+                    os.kill(pid, signal.SIGTERM)
             except OSError:
                 pass
 
@@ -1437,7 +1469,10 @@ def build_claude_command(project_path, flags, prompt=None, remote_host=None):
         if flags.get('agent_teams'):
             env_prefix += 'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 '
 
-        remote_cmd = f'cd {shlex.quote(project_path)} && {env_prefix}' + ' '.join(
+        # Prepend ~/.local/bin to PATH — SSH non-login shells don't source
+        # .bashrc/.profile, so Claude Code installed to ~/.local/bin won't be found
+        path_prefix = 'export PATH="$HOME/.local/bin:$PATH"; '
+        remote_cmd = f'{path_prefix}cd {shlex.quote(project_path)} && {env_prefix}' + ' '.join(
             shlex.quote(c) for c in cmd
         )
 
@@ -1458,7 +1493,7 @@ def build_claude_command(project_path, flags, prompt=None, remote_host=None):
 
         ssh_cmd = [
             'ssh', '-o', 'BatchMode=yes',
-            '-o', 'StrictHostKeyChecking=accept-new',
+            '-o', f"StrictHostKeyChecking={CONFIG.get('ssh_strict_host_key', 'accept-new')}",
             '-p', str(ssh_port),
         ]
         ssh_key = remote_host.get('ssh_key_path', '')
@@ -1550,7 +1585,7 @@ def login():
             session['username'] = username
             session['role'] = user_role
             session['user_id'] = str(uuid.uuid4())
-            session['login_time'] = datetime.utcnow().isoformat()
+            session['login_time'] = datetime.now(timezone.utc).isoformat()
             audit_log('auth_login', username, ip=client_ip, result='success')
             if request.is_json:
                 return jsonify({'success': True})
@@ -1577,6 +1612,36 @@ def api_health():
         'uptime_seconds': int(uptime),
         'active_terminals': terminal_count,
     })
+
+
+@api_v1.route('/report-issue', methods=['POST'])
+@login_required
+def api_report_issue():
+    """Accept issue reports from the in-app issue-reporter widget."""
+    data = request.json or {}
+    description = (data.get('description') or '').strip()
+    issue_type = data.get('type', 'other')
+    if not description:
+        return jsonify({'success': False, 'error': 'Description is required'}), 400
+
+    # Log the report (issues are stored locally; optional GitHub integration later)
+    report = {
+        'type': issue_type,
+        'severity': data.get('severity', 'medium'),
+        'description': description,
+        'expected_behavior': data.get('expected_behavior', ''),
+        'page_url': data.get('page_url', ''),
+        'user': session.get('username', 'anonymous'),
+        'timestamp': datetime.now().isoformat(),
+    }
+    issues_dir = Path(os.path.dirname(os.path.abspath(__file__))) / 'user-data' / 'issues'
+    issues_dir.mkdir(parents=True, exist_ok=True)
+    issue_id = f"{int(datetime.now().timestamp())}-{issue_type}"
+    issue_file = issues_dir / f'{issue_id}.json'
+    with open(issue_file, 'w') as f:
+        json.dump(report, f, indent=2)
+    logger.info("Issue report saved: %s (%s)", issue_id, issue_type)
+    return jsonify({'success': True, 'url': '', 'id': issue_id})
 
 
 @api_v1.route('/engines')
@@ -1663,7 +1728,7 @@ def auth_setup():
     session['username'] = username
     session['role'] = 'admin'
     session['user_id'] = str(uuid.uuid4())
-    session['login_time'] = datetime.utcnow().isoformat()
+    session['login_time'] = datetime.now(timezone.utc).isoformat()
 
     audit_log('auth_setup', username, ip=client_ip, result='success')
     return jsonify({'success': True})
@@ -1845,6 +1910,10 @@ def api_test_remote():
         username = data.get('username', '')
         ssh_key_path = data.get('ssh_key_path', '')
 
+        # Sanitize hostname and username to prevent command injection
+        hostname = re.sub(r'[^a-zA-Z0-9._-]', '', hostname)
+        username = re.sub(r'[^a-zA-Z0-9._-]', '', username)
+
         # Validate port as integer
         try:
             port = int(data.get('port', 22))
@@ -1855,12 +1924,14 @@ def api_test_remote():
 
         if not hostname or not username:
             return jsonify({'success': False, 'error': 'Hostname and username required'}), 400
+        if hostname.startswith('-') or username.startswith('-'):
+            return jsonify({'success': False, 'error': 'Invalid hostname or username'}), 400
         if ssh_key_path and not os.path.isfile(os.path.expanduser(ssh_key_path)):
             return jsonify({'success': False, 'error': f'SSH key not found: {ssh_key_path}'}), 400
 
         cmd = [
             'ssh', '-o', 'ConnectTimeout=5', '-o', 'BatchMode=yes',
-            '-o', 'StrictHostKeyChecking=accept-new',
+            '-o', f"StrictHostKeyChecking={CONFIG.get('ssh_strict_host_key', 'accept-new')}",
             '-p', str(port),
         ]
         if ssh_key_path:
@@ -1883,7 +1954,8 @@ def api_test_remote():
         except subprocess.TimeoutExpired:
             return jsonify({'success': False, 'error': 'Connection timed out'}), 408
         except Exception as e:
-            return jsonify({'success': False, 'error': str(e)}), 500
+            logger.error('Remote test failed: %s', e)
+            return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
     return jsonify({'success': False, 'error': 'Invalid mode'}), 400
 
@@ -1951,7 +2023,8 @@ def api_ssh_config():
             h['already_imported'] = f"{h.get('username', '')}@{h['hostname']}:{h.get('port', 22)}" in existing
 
     except Exception as e:
-        return jsonify({'hosts': [], 'error': str(e)})
+        logger.error('SSH config parse failed: %s', e)
+        return jsonify({'hosts': [], 'error': 'Failed to parse SSH config'})
 
     return jsonify({'hosts': hosts})
 
@@ -1991,7 +2064,8 @@ def api_ssh_setup():
                 })
             return jsonify({'success': False, 'error': result.stderr.strip()})
         except Exception as e:
-            return jsonify({'success': False, 'error': str(e)})
+            logger.error('SSH key generation failed: %s', e)
+            return jsonify({'success': False, 'error': 'SSH key generation failed'})
 
     # GET - return existing key info
     ssh_dir = Path.home() / '.ssh'
@@ -2043,8 +2117,15 @@ def api_push_key():
     except (ValueError, TypeError):
         port = 22
 
+    # Sanitize hostname and username to prevent command injection
+    hostname = re.sub(r'[^a-zA-Z0-9._-]', '', hostname)
+    username = re.sub(r'[^a-zA-Z0-9._-]', '', username)
+
     if not hostname or not username:
         return jsonify({'success': False, 'error': 'Hostname and username required'}), 400
+
+    if hostname.startswith('-') or username.startswith('-'):
+        return jsonify({'success': False, 'error': 'Invalid hostname or username'}), 400
 
     # Find public key
     ssh_dir = Path.home() / '.ssh'
@@ -2070,7 +2151,7 @@ def api_push_key():
         )
         cmd = [
             'sshpass', '-e',
-            'ssh', '-o', 'StrictHostKeyChecking=accept-new',
+            'ssh', '-o', f"StrictHostKeyChecking={CONFIG.get('ssh_strict_host_key', 'accept-new')}",
             '-o', 'ConnectTimeout=10',
             '-p', str(port),
             f'{username}@{hostname}',
@@ -2094,7 +2175,8 @@ def api_push_key():
         except subprocess.TimeoutExpired:
             return jsonify({'success': False, 'error': 'Connection timed out'})
         except Exception as e:
-            return jsonify({'success': False, 'error': str(e)})
+            logger.error('SSH key push failed: %s', e)
+            return jsonify({'success': False, 'error': 'Key push failed'})
     else:
         # No password - return the manual command
         return jsonify({
@@ -2208,7 +2290,7 @@ def _ssh_cmd_for_host(host):
         'ssh',
         '-o', 'BatchMode=yes',
         '-o', 'ConnectTimeout=5',
-        '-o', 'StrictHostKeyChecking=accept-new',
+        '-o', f"StrictHostKeyChecking={CONFIG.get('ssh_strict_host_key', 'accept-new')}",
         '-p', str(ssh_port),
     ]
     key_path = host.get('ssh_key_path', '')
@@ -2553,9 +2635,11 @@ def save_session(session_id):
             return
         session_copy = json.loads(json.dumps(chat_sessions[session_id]))
     sessions_dir = CONFIG['sessions_dir']
-    sessions_dir.mkdir(exist_ok=True)
-    with open(sessions_dir / f'{session_id}.json', 'w') as f:
+    sessions_dir.mkdir(mode=0o700, exist_ok=True)
+    session_file = sessions_dir / f'{session_id}.json'
+    with open(session_file, 'w') as f:
         json.dump(session_copy, f, indent=2)
+    os.chmod(str(session_file), 0o600)
 
 
 def load_session(session_id):
@@ -2581,7 +2665,10 @@ def _ws_auth_check():
     login_time = session.get('login_time')
     if login_time:
         timeout_hours = CONFIG.get('session_timeout_hours', 24)
-        elapsed = (datetime.utcnow() - datetime.fromisoformat(login_time)).total_seconds()
+        parsed_login = datetime.fromisoformat(login_time)
+        if parsed_login.tzinfo is None:
+            parsed_login = parsed_login.replace(tzinfo=timezone.utc)
+        elapsed = (datetime.now(timezone.utc) - parsed_login).total_seconds()
         if elapsed > timeout_hours * 3600:
             return False
     return True
@@ -2596,8 +2683,20 @@ def handle_connect():
 
     new_sid = request.sid
     browser_id = request.args.get('browser_id', '')
+    username = session.get('username', '')
 
     if browser_id:
+        # Verify browser_id ownership — if it belongs to a different user, generate a new one
+        if username:
+            with browser_id_owners_lock:
+                existing_owner = browser_id_owners.get(browser_id)
+                if existing_owner and existing_owner != username:
+                    # Mismatch: this browser_id was bound to a different user
+                    browser_id = str(uuid.uuid4())
+                    logger.warning("browser_id ownership mismatch — generated new id %s for user %s",
+                                   browser_id[:8], username)
+                browser_id_owners[browser_id] = username
+
         old_sid = None
         with pending_disconnect_lock:
             old_sid = browser_to_sid.get(browser_id)
@@ -2615,7 +2714,7 @@ def handle_connect():
                         term['ws_sid'] = new_sid
                         logger.info("Terminal %s re-associated to new SID", tid[:8])
 
-    emit('connected', {'status': 'ok'})
+    emit('connected', {'status': 'ok', 'browser_id': browser_id})
 
 
 @socketio.on('disconnect')
@@ -2623,7 +2722,7 @@ def handle_disconnect():
     """Handle client disconnection with grace period for transient reconnects.
 
     Instead of immediately killing PTY attachments, start a timer. If the same
-    browser reconnects within DISCONNECT_GRACE_SECS, the timer is cancelled and
+    browser reconnects within CONFIG['disconnect_grace_secs'], the timer is cancelled and
     terminals remain attached — no detach/reconnect churn.
     """
     sid = request.sid
@@ -2656,11 +2755,11 @@ def handle_disconnect():
                     if tmux_name:
                         logger.info("Disconnect grace expired — detached tmux %s", tmux_name)
 
-    timer = threading.Timer(DISCONNECT_GRACE_SECS, _expire_disconnect)
+    timer = threading.Timer(CONFIG['disconnect_grace_secs'], _expire_disconnect)
     with pending_disconnect_lock:
         pending_disconnects[sid] = timer
     timer.start()
-    logger.info("Client disconnected (sid=%s) — %ds grace period started", sid[:12], DISCONNECT_GRACE_SECS)
+    logger.info("Client disconnected (sid=%s) — %ds grace period started", sid[:12], CONFIG['disconnect_grace_secs'])
 
 
 @socketio.on('terminal_create')
@@ -2705,7 +2804,7 @@ def handle_terminal_create(data):
     autonomous_task = None
     auto_restart = False
     if flags.get('autonomous'):
-        flags['permission_mode'] = 'acceptEdits'
+        flags['permission_mode'] = 'auto'
         flags['autocompact_threshold'] = 80
         flags['extended_thinking'] = True
         flags['agent_teams'] = True
@@ -2785,8 +2884,8 @@ def handle_terminal_create(data):
     # Set up pipe-pane for watchdog logging
     _tmux_setup_logging(tmux_name, log_file)
 
-    # Bind this tmux session to the creating user
-    owner = session.get('username', '')
+    # Bind this tmux session to the creating user (fall back to browser_id when auth disabled)
+    owner = session.get('username', '') or session.get('browser_id', '')
     _tmux_set_owner(tmux_name, owner)
 
     logger.info("Created tmux session %s for terminal %s (project: %s, owner: %s)", tmux_name, terminal_id, project_path, owner or 'anonymous')
@@ -2866,6 +2965,11 @@ def _attach_to_tmux(terminal_id, tmux_name, project_path, flags, remote_host_id,
                     'data': emit_buffer[0]
                 }, room=ws_sid)
 
+            # Clean up terminal entry when reader thread exits
+            with active_terminals_lock:
+                if terminal_id in active_terminals:
+                    del active_terminals[terminal_id]
+
         thread = threading.Thread(target=read_terminal, daemon=True)
         thread.start()
         with active_terminals_lock:
@@ -2885,6 +2989,10 @@ def handle_terminal_input(data):
         return
     terminal_id = data.get('id')
     input_data = data.get('data', '')
+
+    if len(input_data) > 65536:  # 64KB max terminal input
+        emit('terminal_error', {'error': 'Input too large', 'id': terminal_id})
+        return
 
     with active_terminals_lock:
         term = active_terminals.get(terminal_id)
@@ -2996,6 +3104,12 @@ def handle_terminal_reconnect(data):
     if owner and current_user and owner != current_user:
         emit('terminal_error', {'error': f'Session {tmux_name} belongs to another user'})
         return
+    # When auth is disabled, fall back to browser_id ownership check
+    if not current_user and owner:
+        browser_id = session.get('browser_id', '')
+        if browser_id and owner != browser_id:
+            emit('terminal_error', {'error': 'Session belongs to another client'})
+            return
 
     # Hold lock across check-and-attach to prevent double-reconnect race
     with active_terminals_lock:
@@ -3015,7 +3129,34 @@ def handle_terminal_reconnect(data):
         active_terminals[terminal_id] = {'reserved': True}
 
     project_path = data.get('project', os.path.expanduser('~'))
+    if not validate_file_path(project_path):
+        project_path = os.path.expanduser('~')
     log_file = os.path.join(AGENT_LOG_DIR, f'{tmux_name}.log')
+
+    # Verify browser_id ownership on reconnect
+    browser_id = data.get('browser_id', '')
+    if browser_id and current_user:
+        with browser_id_owners_lock:
+            owner = browser_id_owners.get(browser_id)
+            if owner and owner != current_user:
+                emit('terminal_error', {'error': 'Browser ID ownership mismatch'})
+                with active_terminals_lock:
+                    active_terminals.pop(terminal_id, None)
+                return
+
+    # Replay tmux scrollback before attaching
+    try:
+        scrollback = subprocess.run(
+            [TMUX_BIN, 'capture-pane', '-t', tmux_name, '-p', '-S', '-'],
+            capture_output=True, text=True, timeout=5
+        )
+        if scrollback.returncode == 0 and scrollback.stdout:
+            socketio.emit('terminal_output', {
+                'id': terminal_id,
+                'data': scrollback.stdout
+            }, room=request.sid)
+    except Exception:
+        pass  # Non-fatal: proceed with attach even if scrollback capture fails
 
     logger.info("Reconnecting terminal %s to tmux session %s", terminal_id, tmux_name)
     _attach_to_tmux(terminal_id, tmux_name, project_path, {}, None, log_file, request.sid)
@@ -3038,17 +3179,58 @@ def handle_terminal_kill_tmux(data):
     if owner and current_user and owner != current_user:
         emit('terminal_error', {'error': f'Session {tmux_name} belongs to another user'})
         return
+    # When auth is disabled, fall back to browser_id ownership check
+    if not current_user and owner:
+        browser_id = session.get('browser_id', '')
+        if browser_id and owner != browser_id:
+            emit('terminal_error', {'error': 'Session belongs to another client'})
+            return
 
     # Don't kill if currently attached
     with active_terminals_lock:
         existing = _find_terminal_by_tmux(tmux_name)
     if existing:
-        emit('terminal_error', {'error': f'Session is attached — detach or kill the terminal first'})
+        emit('terminal_error', {'error': 'Session is attached — detach or kill the terminal first'})
         return
 
     _tmux_kill_session(tmux_name)
     emit('tmux_session_killed', {'tmux_session': tmux_name})
     logger.info("Killed detached tmux session %s (by %s)", tmux_name, current_user or 'anonymous')
+
+
+@socketio.on('terminal_list_detached')
+def handle_terminal_list_detached(data=None):
+    """Return list of detached tmux sessions owned by current user."""
+    if not _ws_auth_check():
+        return
+    username = session.get('username', '')
+    detached = []
+    try:
+        sessions = _tmux_list_sessions()
+        for s in sessions:
+            tmux_name = s.get('name', '')
+            # Determine owner via tmux environment variable
+            owner = _tmux_get_owner(tmux_name)
+            # Only return sessions owned by this user (or all if no auth)
+            if not owner or not username or owner == username:
+                # Check if session is not currently attached via active_terminals
+                attached = False
+                with active_terminals_lock:
+                    for tid, tinfo in active_terminals.items():
+                        if tinfo.get('tmux_session') == tmux_name and tinfo.get('pid'):
+                            attached = True
+                            break
+                if not attached:
+                    detached.append({
+                        'name': tmux_name,
+                        'tmux_session': tmux_name,
+                        'owner': owner,
+                        'created': s.get('created', ''),
+                        'project': '',
+                    })
+    except Exception:
+        pass
+    emit('terminal_detached_list', {'sessions': detached})
 
 
 @socketio.on('claude_login')
@@ -3289,11 +3471,12 @@ def handle_chat_message(data):
             })
 
         except Exception as e:
+            logger.error('Chat process failed for session %s: %s', session_id, e)
             sess['status'] = 'error'
             save_session(session_id)
             socketio.emit('chat_error', {
                 'session_id': session_id,
-                'error': str(e)
+                'error': 'Chat process encountered an error'
             })
         finally:
             # Remove from tracking
@@ -3319,13 +3502,13 @@ def export_session(session_id):
     sess = chat_sessions[session_id]
     lines = [
         f"# Chat Session - {sess.get('project_name', 'Claude')}",
-        f"",
+        "",
         f"**Project:** {sess.get('project', 'N/A')}",
         f"**Created:** {sess.get('created', 'N/A')}",
         f"**Messages:** {len(sess.get('messages', []))}",
-        f"",
-        f"---",
-        f"",
+        "",
+        "---",
+        "",
     ]
 
     for msg in sess.get('messages', []):
@@ -3335,11 +3518,11 @@ def export_session(session_id):
         lines.append(f"### {role}")
         if timestamp:
             lines.append(f"*{timestamp}*")
-        lines.append(f"")
+        lines.append("")
         lines.append(content)
-        lines.append(f"")
-        lines.append(f"---")
-        lines.append(f"")
+        lines.append("")
+        lines.append("---")
+        lines.append("")
 
     md_content = '\n'.join(lines)
     return app.response_class(
@@ -3873,7 +4056,6 @@ def decrypt_api_key(encrypted_key: str, user_salt: str) -> str:
         raise ValueError("encrypted_key must not be empty")
     if not user_salt:
         raise ValueError("user_salt must not be empty")
-    from itsdangerous import URLSafeTimedSerializer
     s = _api_key_serializer(user_salt)
     # max_age=None → no expiry; we want permanent storage
     return s.loads(encrypted_key, max_age=None)
@@ -4181,6 +4363,24 @@ def api_change_user_password(username):
     return jsonify({'error': 'User not found'}), 404
 
 
+@api_v1.route('/auth/reload', methods=['POST'])
+@login_required
+@csrf_protect
+def api_auth_reload():
+    """Re-read auth.json into memory (admin only).
+
+    Useful after external edits to auth.json so the running app picks up
+    changes without a full restart.
+    """
+    user = get_current_user()
+    if not user or user.get('role') != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+    reloaded = load_auth()
+    AUTH.clear()
+    AUTH.update(reloaded)
+    return jsonify({'success': True, 'users': len(AUTH.get('users', []))})
+
+
 @api_v1.route('/auth/whoami')
 @login_required
 def api_whoami():
@@ -4313,7 +4513,7 @@ def api_list_lockouts():
     Returns a list of objects with ``ip``, ``permanently_locked``, and
     ``locked_until`` (ISO-8601 UTC string, or null for permanent locks).
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     result = []
     with _lockout_lock:
         for ip, state in list(_lockout_store.items()):
@@ -5399,7 +5599,10 @@ def api_legacy_redirect(path):
     The unversioned /api/health and /api/csrf-token routes are registered
     directly on the app and are matched before this catch-all.
     """
-    return redirect(f'/api/v1/{path}', code=308)
+    resp = redirect(f'/api/v1/{path}', code=308)
+    resp.headers['Deprecation'] = 'true'
+    resp.headers['Link'] = f'</api/v1/{path}>; rel="successor-version"'
+    return resp
 
 
 # ============== Main ==============

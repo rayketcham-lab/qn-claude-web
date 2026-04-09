@@ -28,8 +28,9 @@ if os.path.isdir(_vendor_dir) and _vendor_dir not in sys.path:
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
-import app as app_module
 from werkzeug.security import generate_password_hash
+
+import app as app_module
 
 flask_app = app_module.app
 flask_app.config['TESTING'] = True

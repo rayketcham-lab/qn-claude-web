@@ -9,12 +9,12 @@ Run with:
     /usr/bin/python3 -m unittest tests/test_routes.py -v
 """
 
-import sys
-import os
 import json
+import os
+import sys
 import tempfile
 import unittest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Bootstrap path
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -24,8 +24,9 @@ if os.path.isdir(_vendor_dir) and _vendor_dir not in sys.path:
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
-import app as app_module
 from werkzeug.security import generate_password_hash
+
+import app as app_module
 
 flask_app = app_module.app
 flask_app.config['TESTING'] = True
@@ -231,7 +232,7 @@ class TestAuthRoutes(unittest.TestCase):
         with flask_app.test_client() as client:
             _login(client)
             # Backdate login_time by 2 hours so it appears expired
-            expired_time = (datetime.utcnow() - timedelta(hours=2)).isoformat()
+            expired_time = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
             with client.session_transaction() as sess:
                 sess['login_time'] = expired_time
             # Protected API endpoint should reject the expired session
@@ -602,7 +603,7 @@ class TestCSRFProtection(unittest.TestCase):
             sess['authenticated'] = True
             sess['username'] = 'admin'
             sess['role'] = 'admin'
-            sess['login_time'] = datetime.utcnow().isoformat()
+            sess['login_time'] = datetime.now(timezone.utc).isoformat()
 
     def _get_csrf_token(self, client):
         resp = client.get('/api/csrf-token')
@@ -642,8 +643,8 @@ class TestCSRFProtection(unittest.TestCase):
             )
             self.assertEqual(resp.status_code, 200)
 
-    def test_csrf_not_required_when_auth_disabled(self):
-        """CSRF check is skipped when auth is disabled."""
+    def test_csrf_enforced_even_when_auth_disabled(self):
+        """CSRF check is enforced even when auth is disabled (defense in depth)."""
         app_module.AUTH['auth']['enabled'] = False
         with flask_app.test_client() as client:
             resp = client.post(
@@ -651,7 +652,7 @@ class TestCSRFProtection(unittest.TestCase):
                 data=json.dumps({'theme': 'dark'}),
                 content_type='application/json',
             )
-            self.assertEqual(resp.status_code, 200)
+            self.assertEqual(resp.status_code, 403)
 
     def test_wrong_csrf_token_returns_403(self):
         """POST with an incorrect CSRF token returns 403."""
@@ -724,7 +725,7 @@ class TestWebSocketAuth(unittest.TestCase):
         with flask_app.test_request_context():
             from flask import session as flask_session
             flask_session['authenticated'] = True
-            flask_session['login_time'] = (datetime.utcnow() - timedelta(hours=2)).isoformat()
+            flask_session['login_time'] = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
             self.assertFalse(app_module._ws_auth_check())
 
     def test_ws_auth_passes_with_valid_session(self):
@@ -734,7 +735,7 @@ class TestWebSocketAuth(unittest.TestCase):
         with flask_app.test_request_context():
             from flask import session as flask_session
             flask_session['authenticated'] = True
-            flask_session['login_time'] = datetime.utcnow().isoformat()
+            flask_session['login_time'] = datetime.now(timezone.utc).isoformat()
             self.assertTrue(app_module._ws_auth_check())
 
 
@@ -1034,8 +1035,8 @@ class TestUserClaudeDir(unittest.TestCase):
 
     def test_get_user_claude_dir_permissions(self):
         """User root directory is created with mode 0700."""
-        import stat
         import pathlib
+        import stat
         app_module.get_user_claude_dir('alice')
         user_root = pathlib.Path(self._tmp) / 'alice'
         mode = stat.S_IMODE(user_root.stat().st_mode)
@@ -1394,13 +1395,19 @@ class TestHostHealthEndpoint(unittest.TestCase):
     def tearDown(self):
         _restore_config(self._config_snap)
 
+    def _get_csrf(self, client):
+        resp = client.get('/api/csrf-token')
+        return json.loads(resp.data)['csrf_token']
+
     def test_host_health_check_unknown_host_returns_404(self):
         """POST /api/hosts/<host_id>/health returns 404 for an unknown host ID."""
         _disable_auth()
         app_module.CONFIG['remote_hosts'] = []
         with flask_app.test_client() as client:
+            token = self._get_csrf(client)
             resp = client.post('/api/v1/hosts/nonexistent/health',
-                               content_type='application/json')
+                               content_type='application/json',
+                               headers={'X-CSRF-Token': token})
         self.assertEqual(resp.status_code, 404)
         data = resp.get_json()
         self.assertIn('error', data)
@@ -1438,8 +1445,10 @@ class TestHostHealthEndpoint(unittest.TestCase):
 
         with mock.patch('subprocess.run', return_value=fake_result):
             with flask_app.test_client() as client:
+                token = self._get_csrf(client)
                 resp = client.post('/api/v1/hosts/s1/health',
-                                   content_type='application/json')
+                                   content_type='application/json',
+                                   headers={'X-CSRF-Token': token})
 
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
@@ -1461,8 +1470,10 @@ class TestHostHealthEndpoint(unittest.TestCase):
 
         with mock.patch('subprocess.run', return_value=fake_result):
             with flask_app.test_client() as client:
+                token = self._get_csrf(client)
                 resp = client.post('/api/v1/hosts/s1/health',
-                                   content_type='application/json')
+                                   content_type='application/json',
+                                   headers={'X-CSRF-Token': token})
 
         data = resp.get_json()
         self.assertEqual(data['status'], 'unreachable')
@@ -1470,16 +1481,18 @@ class TestHostHealthEndpoint(unittest.TestCase):
 
     def test_host_health_ssh_timeout_returns_timeout_status(self):
         """POST /api/hosts/<host_id>/health returns timeout status on subprocess timeout."""
-        import unittest.mock as mock
         import subprocess as _sp
+        import unittest.mock as mock
         _disable_auth()
         app_module.CONFIG['remote_hosts'] = [_make_ssh_host('s1')]
 
         with mock.patch('subprocess.run',
                         side_effect=_sp.TimeoutExpired(cmd='ssh', timeout=10)):
             with flask_app.test_client() as client:
+                token = self._get_csrf(client)
                 resp = client.post('/api/v1/hosts/s1/health',
-                                   content_type='application/json')
+                                   content_type='application/json',
+                                   headers={'X-CSRF-Token': token})
 
         data = resp.get_json()
         self.assertEqual(data['status'], 'timeout')
@@ -1493,12 +1506,18 @@ class TestHostsBatchHealthEndpoint(unittest.TestCase):
     def tearDown(self):
         _restore_config(self._config_snap)
 
+    def _get_csrf(self, client):
+        resp = client.get('/api/csrf-token')
+        return json.loads(resp.data)['csrf_token']
+
     def test_batch_health_empty_hosts(self):
         """POST /api/hosts/health returns empty results when no hosts configured."""
         _disable_auth()
         app_module.CONFIG['remote_hosts'] = []
         with flask_app.test_client() as client:
-            resp = client.post('/api/v1/hosts/health', content_type='application/json')
+            token = self._get_csrf(client)
+            resp = client.post('/api/v1/hosts/health', content_type='application/json',
+                               headers={'X-CSRF-Token': token})
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.get_json().get('results'), [])
 
@@ -1526,7 +1545,9 @@ class TestHostsBatchHealthEndpoint(unittest.TestCase):
 
         with mock.patch('subprocess.run', return_value=fake_result):
             with flask_app.test_client() as client:
-                resp = client.post('/api/v1/hosts/health', content_type='application/json')
+                token = self._get_csrf(client)
+                resp = client.post('/api/v1/hosts/health', content_type='application/json',
+                                   headers={'X-CSRF-Token': token})
 
         self.assertEqual(resp.status_code, 200)
         results = resp.get_json().get('results', [])
@@ -1560,7 +1581,7 @@ class TestOnboarding(unittest.TestCase):
             sess['authenticated'] = True
             sess['username'] = username
             sess['role'] = role
-            sess['login_time'] = datetime.utcnow().isoformat()
+            sess['login_time'] = datetime.now(timezone.utc).isoformat()
 
     def test_onboarding_status_needs_onboarding_new_user(self):
         """A new user with no credentials or favorites needs onboarding."""
@@ -2077,6 +2098,46 @@ class TestAPIVersioning(unittest.TestCase):
             blueprint_resp = client.get('/api/v1/csrf-token', follow_redirects=False)
         self.assertEqual(direct.status_code, 200)
         self.assertNotEqual(blueprint_resp.status_code, 200)
+
+
+class TestSSHPathPrefix(unittest.TestCase):
+    """Regression tests for SSH remote command PATH prefix (Issue #94, #96)."""
+
+    def test_ssh_command_includes_path_prefix(self):
+        """SSH commands must prepend ~/.local/bin to PATH."""
+        remote_host = {
+            'mode': 'ssh',
+            'username': 'testuser',
+            'hostname': 'testhost',
+            'port': 22,
+        }
+        cmd = app_module.build_claude_command('/opt/test', {}, remote_host=remote_host)
+        # The last element of the SSH command is the remote shell command
+        remote_cmd = cmd[-1]
+        self.assertIn('.local/bin', remote_cmd,
+                      'SSH remote command must include .local/bin PATH prefix')
+        self.assertIn('export PATH=', remote_cmd,
+                      'SSH remote command must export PATH')
+
+    def test_local_command_no_path_prefix(self):
+        """Local (non-SSH) commands must NOT include PATH prefix."""
+        cmd = app_module.build_claude_command('/opt/test', {})
+        cmd_str = ' '.join(cmd)
+        self.assertNotIn('export PATH=', cmd_str,
+                         'Local commands must not include SSH PATH prefix')
+
+    def test_ssh_command_includes_cd(self):
+        """SSH commands must cd to the project path."""
+        remote_host = {
+            'mode': 'ssh',
+            'username': 'testuser',
+            'hostname': 'testhost',
+            'port': 22,
+        }
+        cmd = app_module.build_claude_command('/opt/test', {}, remote_host=remote_host)
+        remote_cmd = cmd[-1]
+        self.assertIn("cd /opt/test", remote_cmd,
+                      'SSH remote command must cd to project path')
 
 
 if __name__ == '__main__':

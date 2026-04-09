@@ -3,182 +3,1099 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>QN Claude Web — Live Demos</title>
-<link rel="stylesheet" type="text/css" href="https://unpkg.com/asciinema-player@3.7.1/dist/bundle/asciinema-player.css" />
+<meta name="description" content="QN Code Assistant — Self-hosted web UI for Claude Code CLI. AI agent teams, SSH remote servers, real PTY terminal, and autonomous mode. Access from any browser.">
+<title>QN Code Assistant — AI Dev Team in Your Browser</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    background: #0a0a1a;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    color: #e0e0e0;
-    min-height: 100vh;
-  }
-  .hero {
-    text-align: center;
-    padding: 3rem 1rem 2rem;
-    background: linear-gradient(180deg, #0d1b2a 0%, #0a0a1a 100%);
-    border-bottom: 1px solid #1a2a3a;
-  }
-  .hero-badge {
-    display: inline-block;
-    padding: 0.3rem 0.8rem;
-    background: rgba(0, 212, 255, 0.1);
-    border: 1px solid rgba(0, 212, 255, 0.3);
-    border-radius: 20px;
-    font-size: 0.75rem;
-    color: #00d4ff;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    margin-bottom: 1rem;
-  }
-  .hero h1 { font-size: 2.5rem; font-weight: 700; color: #fff; margin-bottom: 0.5rem; }
-  .hero h1 span { color: #00d4ff; }
-  .hero p { color: #8899aa; font-size: 1.1rem; max-width: 650px; margin: 0 auto 1.5rem; }
-  .hero-stats { display: flex; justify-content: center; gap: 2rem; flex-wrap: wrap; margin-top: 1rem; }
-  .stat { text-align: center; }
-  .stat-value { font-size: 1.5rem; font-weight: 700; color: #00d4ff; }
-  .stat-label { font-size: 0.75rem; color: #667; text-transform: uppercase; letter-spacing: 0.05em; }
-  .demo-section { max-width: 1100px; margin: 0 auto; padding: 2rem 1rem; }
-  .demo-info { text-align: center; margin-bottom: 1.5rem; }
-  .demo-info h2 { font-size: 1.3rem; color: #fff; margin-bottom: 0.3rem; }
-  .demo-info p { color: #667; font-size: 0.9rem; }
-  .player-wrapper {
-    max-width: 1000px; margin: 0 auto;
-    border-radius: 12px; overflow: hidden;
-    border: 1px solid #1f2937;
-    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5), 0 0 60px rgba(0, 212, 255, 0.05);
-  }
-  #player { width: 100%; }
-  .features { max-width: 1100px; margin: 3rem auto; padding: 0 1rem; }
-  .features-header { text-align: center; margin-bottom: 2rem; }
-  .features-header h2 { font-size: 1.5rem; color: #fff; margin-bottom: 0.5rem; }
-  .features-header p { color: #667; }
-  .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; }
-  .feature-card {
-    background: #111827; border: 1px solid #1f2937; border-radius: 12px; padding: 1.5rem; transition: border-color 0.2s;
-  }
-  .feature-card:hover { border-color: #00d4ff; }
-  .feature-card h3 { color: #fff; font-size: 1rem; margin-bottom: 0.5rem; }
-  .feature-card p { color: #8899aa; font-size: 0.85rem; line-height: 1.5; }
-  .compare { max-width: 800px; margin: 2rem auto; }
-  .compare table { width: 100%; border-collapse: collapse; }
-  .compare th { text-align: left; padding: 0.5rem; color: #fff; font-size: 0.85rem; border-bottom: 1px solid #1f2937; }
-  .compare td { padding: 0.5rem; font-size: 0.85rem; border-bottom: 1px solid #111827; }
-  .compare .yes { color: #00d4ff; }
-  .compare .no { color: #555; }
-  .cta { text-align: center; padding: 3rem 1rem; }
-  .cta-btn {
-    display: inline-block; padding: 0.8rem 2rem; background: #00d4ff; color: #000;
-    text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 1rem;
-    transition: transform 0.2s, box-shadow 0.2s;
-  }
-  .cta-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 20px rgba(0, 212, 255, 0.3); }
-  .footer { text-align: center; padding: 2rem; color: #445; font-size: 0.8rem; border-top: 1px solid #1a2a3a; }
-  .footer a { color: #00d4ff; text-decoration: none; }
+/* ===== RESET & BASE ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-deep:      #0a0a1a;
+  --bg-mid:       #0d1b2a;
+  --bg-card:      #0f1e30;
+  --bg-card-alt:  #111827;
+  --border:       #1a2a3a;
+  --border-hi:    rgba(0, 212, 255, 0.25);
+  --cyan:         #00d4ff;
+  --cyan-dim:     rgba(0, 212, 255, 0.12);
+  --cyan-glow:    rgba(0, 212, 255, 0.35);
+  --text-pri:     #f0f4f8;
+  --text-sec:     #8899aa;
+  --text-dim:     #445566;
+  --green:        #00ff9d;
+  --purple:       #a78bfa;
+  --orange:       #fb923c;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg-deep);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color: var(--text-pri);
+  min-height: 100vh;
+  overflow-x: hidden;
+  line-height: 1.6;
+}
+
+/* ===== CANVAS BACKGROUND ===== */
+#constellation-canvas {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.65;
+}
+
+/* ===== LAYOUT WRAPPERS ===== */
+section { position: relative; z-index: 1; }
+.container { max-width: 1100px; margin: 0 auto; padding: 0 1.5rem; }
+
+/* ===== NAV ===== */
+nav {
+  position: fixed; top: 0; left: 0; right: 0;
+  z-index: 100;
+  padding: 1rem 2rem;
+  display: flex; align-items: center; justify-content: space-between;
+  background: linear-gradient(to bottom, rgba(10,10,26,0.95), rgba(10,10,26,0));
+  backdrop-filter: blur(8px);
+}
+.nav-logo {
+  font-weight: 700; font-size: 1rem; color: var(--text-pri);
+  letter-spacing: -0.02em;
+}
+.nav-logo span { color: var(--cyan); }
+.nav-link {
+  color: var(--text-sec); text-decoration: none; font-size: 0.9rem;
+  padding: 0.4rem 1rem; border: 1px solid var(--border);
+  border-radius: 6px; transition: all 0.2s;
+}
+.nav-link:hover { color: var(--cyan); border-color: var(--border-hi); background: var(--cyan-dim); }
+
+/* ===== HERO ===== */
+#hero {
+  min-height: 100vh;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  text-align: center;
+  padding: 7rem 1.5rem 4rem;
+  background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(0, 212, 255, 0.06) 0%, transparent 70%);
+}
+
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.35rem 1rem;
+  background: var(--cyan-dim);
+  border: 1px solid var(--border-hi);
+  border-radius: 50px;
+  font-size: 0.72rem; font-weight: 600; color: var(--cyan);
+  text-transform: uppercase; letter-spacing: 0.12em;
+  margin-bottom: 2.5rem;
+  animation: fadeSlideDown 0.8s ease both;
+}
+.hero-badge-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 8px var(--green);
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.hero-title {
+  font-size: clamp(2.8rem, 8vw, 5.5rem);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+  color: var(--text-pri);
+  margin-bottom: 0.5rem;
+  animation: fadeSlideDown 0.8s ease 0.1s both;
+}
+.hero-title-accent { color: var(--cyan); position: relative; }
+.hero-title-accent::after {
+  content: '';
+  position: absolute; left: 0; right: 0; bottom: 2px;
+  height: 3px;
+  background: linear-gradient(90deg, var(--cyan), transparent);
+  border-radius: 2px;
+}
+
+.cursor-blink {
+  display: inline-block;
+  width: 3px; height: 0.85em;
+  background: var(--cyan);
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: blink 1s step-end infinite;
+}
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+.hero-subtitle {
+  font-size: clamp(1.1rem, 3vw, 1.4rem);
+  color: var(--text-sec);
+  min-height: 2rem;
+  margin: 1.5rem 0 3rem;
+  font-weight: 400;
+  animation: fadeSlideDown 0.8s ease 0.2s both;
+}
+.hero-subtitle .cycle-text {
+  color: var(--text-pri);
+  font-weight: 500;
+  border-bottom: 1px solid var(--border-hi);
+}
+
+.hero-cta-group {
+  display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center;
+  margin-bottom: 4rem;
+  animation: fadeSlideDown 0.8s ease 0.3s both;
+}
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.85rem 2rem; font-size: 1rem; font-weight: 600;
+  background: var(--cyan); color: #000;
+  text-decoration: none; border-radius: 10px;
+  transition: all 0.2s; letter-spacing: -0.01em;
+  box-shadow: 0 0 30px rgba(0, 212, 255, 0.25);
+}
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 40px rgba(0, 212, 255, 0.45);
+}
+.btn-secondary {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.85rem 2rem; font-size: 1rem; font-weight: 500;
+  color: var(--text-pri); background: transparent;
+  text-decoration: none; border-radius: 10px;
+  border: 1px solid var(--border);
+  transition: all 0.2s;
+}
+.btn-secondary:hover { border-color: var(--border-hi); background: var(--cyan-dim); color: var(--cyan); }
+
+/* ===== SCROLL INDICATOR ===== */
+.scroll-cue {
+  position: absolute; bottom: 2rem; left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 0.4rem;
+  color: var(--text-dim); font-size: 0.7rem; letter-spacing: 0.1em;
+  text-transform: uppercase;
+  animation: fadeIn 1s ease 1.5s both;
+}
+.scroll-arrow {
+  width: 20px; height: 20px;
+  border-right: 2px solid var(--text-dim); border-bottom: 2px solid var(--text-dim);
+  transform: rotate(45deg);
+  animation: bounce-arrow 1.8s ease-in-out infinite;
+}
+@keyframes bounce-arrow {
+  0%, 100% { transform: rotate(45deg) translateY(0); }
+  50% { transform: rotate(45deg) translateY(5px); }
+}
+
+/* ===== STATS ===== */
+#stats {
+  padding: 5rem 0;
+  background: linear-gradient(180deg, transparent 0%, rgba(13,27,42,0.7) 50%, transparent 100%);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 2rem;
+  text-align: center;
+}
+.stat-item { padding: 1.5rem; }
+.stat-number {
+  font-size: clamp(2.5rem, 5vw, 3.5rem);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  background: linear-gradient(135deg, var(--cyan) 0%, #7c3aed 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  display: block;
+  line-height: 1;
+  margin-bottom: 0.5rem;
+}
+.stat-label {
+  font-size: 0.8rem; color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: 0.1em;
+  font-weight: 600;
+}
+
+/* ===== FEATURES ===== */
+#features { padding: 6rem 0; }
+.section-header { text-align: center; margin-bottom: 4rem; }
+.section-badge {
+  display: inline-block;
+  padding: 0.3rem 0.9rem;
+  background: rgba(167, 139, 250, 0.1);
+  border: 1px solid rgba(167, 139, 250, 0.25);
+  border-radius: 50px;
+  font-size: 0.7rem; font-weight: 600; color: var(--purple);
+  text-transform: uppercase; letter-spacing: 0.12em;
+  margin-bottom: 1.2rem;
+}
+.section-title {
+  font-size: clamp(1.8rem, 4vw, 2.8rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--text-pri);
+  margin-bottom: 0.8rem;
+  line-height: 1.2;
+}
+.section-desc { color: var(--text-sec); font-size: 1.05rem; max-width: 520px; margin: 0 auto; }
+
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+  gap: 1.5rem;
+}
+.feature-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 2rem;
+  position: relative; overflow: hidden;
+  transition: border-color 0.3s, transform 0.3s, box-shadow 0.3s;
+  cursor: default;
+}
+.feature-card::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--cyan-glow), transparent);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.feature-card::after {
+  content: '';
+  position: absolute;
+  width: 200px; height: 200px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--cyan-dim) 0%, transparent 70%);
+  top: -100px; right: -100px;
+  opacity: 0;
+  transition: opacity 0.4s;
+  pointer-events: none;
+}
+.feature-card:hover {
+  border-color: var(--border-hi);
+  transform: translateY(-4px);
+  box-shadow: 0 8px 40px rgba(0, 212, 255, 0.08), 0 0 0 1px rgba(0, 212, 255, 0.1);
+}
+.feature-card:hover::before { opacity: 1; }
+.feature-card:hover::after { opacity: 1; }
+
+.feature-icon {
+  width: 52px; height: 52px;
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.5rem;
+  margin-bottom: 1.2rem;
+  position: relative; z-index: 1;
+}
+.icon-cyan { background: rgba(0, 212, 255, 0.12); border: 1px solid rgba(0, 212, 255, 0.2); }
+.icon-purple { background: rgba(167, 139, 250, 0.12); border: 1px solid rgba(167, 139, 250, 0.2); }
+.icon-green { background: rgba(0, 255, 157, 0.1); border: 1px solid rgba(0, 255, 157, 0.2); }
+.icon-orange { background: rgba(251, 146, 60, 0.1); border: 1px solid rgba(251, 146, 60, 0.2); }
+
+.feature-title {
+  font-size: 1rem; font-weight: 600;
+  color: var(--text-pri); margin-bottom: 0.5rem;
+  position: relative; z-index: 1;
+}
+.feature-desc {
+  font-size: 0.875rem; color: var(--text-sec); line-height: 1.6;
+  position: relative; z-index: 1;
+}
+
+/* ===== TERMINAL SHOWCASE ===== */
+#showcase {
+  padding: 6rem 0;
+  background: radial-gradient(ellipse 70% 50% at 50% 50%, rgba(0, 212, 255, 0.04) 0%, transparent 70%);
+}
+.showcase-layout {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 3rem; align-items: center;
+}
+.showcase-text h2 {
+  font-size: clamp(1.6rem, 3.5vw, 2.4rem);
+  font-weight: 700; letter-spacing: -0.03em;
+  margin-bottom: 1.2rem; line-height: 1.2;
+}
+.showcase-text p {
+  color: var(--text-sec); line-height: 1.7; margin-bottom: 1.5rem;
+}
+.feature-list { list-style: none; display: flex; flex-direction: column; gap: 0.7rem; }
+.feature-list li {
+  display: flex; align-items: flex-start; gap: 0.75rem;
+  color: var(--text-sec); font-size: 0.9rem;
+}
+.check-icon {
+  flex-shrink: 0; width: 18px; height: 18px;
+  border-radius: 50%; background: rgba(0, 255, 157, 0.15);
+  border: 1px solid rgba(0, 255, 157, 0.3);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.65rem; color: var(--green); margin-top: 2px;
+}
+.feature-list li strong { color: var(--text-pri); }
+
+/* ===== TERMINAL WINDOW ===== */
+.terminal-window {
+  background: #080d14;
+  border: 1px solid #1a2a3a;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255,255,255,0.04),
+    0 0 80px rgba(0, 212, 255, 0.06);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+.terminal-chrome {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.8rem 1rem;
+  background: #0d1520;
+  border-bottom: 1px solid #1a2a3a;
+}
+.dot { width: 11px; height: 11px; border-radius: 50%; }
+.dot-red { background: #ff5f57; }
+.dot-yellow { background: #febc2e; }
+.dot-green { background: #28c840; }
+.terminal-title { margin-left: 0.75rem; color: var(--text-dim); font-size: 0.72rem; letter-spacing: 0.05em; }
+.terminal-body { padding: 1.2rem 1.4rem; min-height: 220px; }
+.t-comment { color: #3d5166; }
+.t-prompt { color: var(--cyan); }
+.t-cmd { color: var(--text-pri); }
+.t-output { color: #8899aa; }
+.t-success { color: var(--green); }
+.t-warn { color: var(--orange); }
+.t-path { color: var(--purple); }
+.t-line { display: block; margin-bottom: 0.15rem; }
+
+/* ===== COMPARISON TABLE ===== */
+#comparison { padding: 6rem 0; }
+.compare-wrapper {
+  overflow-x: auto;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 30px rgba(0,0,0,0.4);
+}
+.compare-table {
+  width: 100%; border-collapse: collapse;
+  background: var(--bg-card);
+  font-size: 0.875rem;
+}
+.compare-table thead th {
+  padding: 1.2rem 1.5rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  color: var(--text-sec);
+  font-size: 0.8rem;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  background: var(--bg-mid);
+  white-space: nowrap;
+}
+.compare-table thead th:first-child { color: var(--text-dim); }
+.compare-table thead th.col-qn {
+  color: var(--cyan);
+  background: rgba(0, 212, 255, 0.06);
+  border-left: 1px solid var(--border-hi);
+  border-right: 1px solid var(--border-hi);
+}
+.compare-table tbody tr { border-bottom: 1px solid rgba(26,42,58,0.5); transition: background 0.15s; }
+.compare-table tbody tr:last-child { border-bottom: none; }
+.compare-table tbody tr:hover { background: rgba(255,255,255,0.02); }
+.compare-table td {
+  padding: 1rem 1.5rem;
+  color: var(--text-sec);
+  vertical-align: middle;
+}
+.compare-table td:first-child { color: var(--text-pri); font-weight: 500; }
+.compare-table td.col-qn {
+  background: rgba(0, 212, 255, 0.04);
+  border-left: 1px solid rgba(0, 212, 255, 0.1);
+  border-right: 1px solid rgba(0, 212, 255, 0.1);
+}
+.cell-yes { color: var(--green); font-weight: 600; display: flex; align-items: center; gap: 0.4rem; }
+.cell-no { color: var(--text-dim); display: flex; align-items: center; gap: 0.4rem; }
+.cell-partial { color: var(--orange); display: flex; align-items: center; gap: 0.4rem; }
+.check { font-size: 0.85rem; }
+
+/* ===== AGENTS SECTION ===== */
+#agents { padding: 6rem 0; }
+.agents-visual {
+  position: relative;
+  display: flex; flex-direction: column;
+  align-items: center; gap: 1rem;
+  padding: 2rem 0;
+}
+.agent-center {
+  width: 100px; height: 100px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0,212,255,0.2) 0%, rgba(0,212,255,0.05) 60%, transparent 100%);
+  border: 2px solid var(--border-hi);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  font-size: 1.8rem;
+  box-shadow: 0 0 40px rgba(0,212,255,0.2), 0 0 80px rgba(0,212,255,0.08);
+  animation: orbit-glow 4s ease-in-out infinite;
+  position: relative; z-index: 2;
+  margin-bottom: 1.5rem;
+}
+@keyframes orbit-glow {
+  0%, 100% { box-shadow: 0 0 40px rgba(0,212,255,0.2), 0 0 80px rgba(0,212,255,0.08); }
+  50% { box-shadow: 0 0 60px rgba(0,212,255,0.4), 0 0 120px rgba(0,212,255,0.15); }
+}
+.agent-center-label { font-size: 0.6rem; color: var(--cyan); font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-top: 4px; font-family: 'JetBrains Mono', monospace; }
+
+.agents-orbit {
+  display: flex; flex-wrap: wrap; justify-content: center;
+  gap: 0.75rem; max-width: 600px; margin: 0 auto;
+}
+.agent-pill {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 50px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  font-size: 0.8rem; font-weight: 500;
+  color: var(--text-sec);
+  transition: all 0.3s;
+  cursor: default;
+}
+.agent-pill:hover { border-color: var(--border-hi); color: var(--text-pri); background: var(--cyan-dim); }
+.agent-pill-icon { font-size: 0.9rem; }
+.agent-pill.active {
+  border-color: rgba(0, 212, 255, 0.4);
+  background: rgba(0, 212, 255, 0.08);
+  color: var(--cyan);
+  box-shadow: 0 0 15px rgba(0, 212, 255, 0.15);
+}
+
+.agents-layout {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 4rem; align-items: start;
+}
+.agents-text h2 {
+  font-size: clamp(1.6rem, 3.5vw, 2.4rem);
+  font-weight: 700; letter-spacing: -0.03em;
+  margin-bottom: 1.2rem; line-height: 1.2;
+}
+.agents-text p { color: var(--text-sec); line-height: 1.7; margin-bottom: 1.5rem; }
+
+/* ===== CTA ===== */
+#cta {
+  padding: 8rem 0;
+  text-align: center;
+  background: radial-gradient(ellipse 60% 80% at 50% 100%, rgba(0,212,255,0.07) 0%, transparent 70%);
+}
+.cta-title {
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  font-weight: 800; letter-spacing: -0.04em;
+  margin-bottom: 1.5rem; line-height: 1.1;
+}
+.cta-title .grad {
+  background: linear-gradient(135deg, var(--cyan) 0%, var(--purple) 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.cta-sub { color: var(--text-sec); font-size: 1.1rem; margin-bottom: 3rem; }
+.cta-buttons { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+
+/* ===== FOOTER ===== */
+footer {
+  padding: 2.5rem;
+  text-align: center;
+  border-top: 1px solid var(--border);
+  color: var(--text-dim); font-size: 0.8rem;
+}
+footer a { color: var(--cyan); text-decoration: none; opacity: 0.7; transition: opacity 0.2s; }
+footer a:hover { opacity: 1; }
+
+/* ===== ANIMATIONS ===== */
+@keyframes fadeSlideDown {
+  from { opacity: 0; transform: translateY(-12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes countUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ===== SCROLL REVEAL ===== */
+.reveal {
+  opacity: 0; transform: translateY(30px);
+  transition: opacity 0.7s ease, transform 0.7s ease;
+}
+.reveal.visible { opacity: 1; transform: translateY(0); }
+.reveal-delay-1 { transition-delay: 0.1s; }
+.reveal-delay-2 { transition-delay: 0.2s; }
+.reveal-delay-3 { transition-delay: 0.3s; }
+.reveal-delay-4 { transition-delay: 0.4s; }
+.reveal-delay-5 { transition-delay: 0.5s; }
+
+/* ===== DIVIDERS ===== */
+.divider {
+  width: 100%; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border), transparent);
+  margin: 0 auto;
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 768px) {
+  .showcase-layout, .agents-layout { grid-template-columns: 1fr; gap: 2rem; }
+  nav { padding: 0.8rem 1rem; }
+  .nav-logo { font-size: 0.9rem; }
+  .hero-cta-group { flex-direction: column; align-items: center; }
+  .btn-primary, .btn-secondary { width: 100%; max-width: 280px; justify-content: center; }
+  .stats-grid { grid-template-columns: 1fr 1fr; }
+  .agents-visual { order: -1; }
+  .cta-buttons { flex-direction: column; align-items: center; }
+}
+
+@media (max-width: 480px) {
+  .stats-grid { grid-template-columns: 1fr 1fr; }
+  .features-grid { grid-template-columns: 1fr; }
+  .feature-card { padding: 1.5rem; }
+}
 </style>
 </head>
 <body>
 
-<div class="hero">
-  <div class="hero-badge">Live Demo</div>
-  <h1>QN <span>Claude Web</span></h1>
-  <p>Self-hosted web frontend for Claude Code CLI. Access Claude Code from any browser, any device, anywhere on your network.</p>
-  <div class="hero-stats">
-    <div class="stat"><div class="stat-value">3</div><div class="stat-label">Commands to Install</div></div>
-    <div class="stat"><div class="stat-value">0</div><div class="stat-label">Build Steps</div></div>
-    <div class="stat"><div class="stat-value">191</div><div class="stat-label">Security Tests</div></div>
-    <div class="stat"><div class="stat-value">1</div><div class="stat-label">Python File</div></div>
-  </div>
-</div>
+<!-- Particle / constellation canvas -->
+<canvas id="constellation-canvas"></canvas>
 
-<div class="demo-section">
-  <div class="demo-info">
-    <h2>Quick Start</h2>
-    <p>3 commands. No npm, no Docker, no build step.</p>
-  </div>
-  <div class="player-wrapper">
-    <div id="player"></div>
-  </div>
-</div>
+<!-- Nav -->
+<nav>
+  <div class="nav-logo">QN <span>Code</span></div>
+  <a href="https://github.com/rayketcham-lab/qn-claude-web" class="nav-link">GitHub &rarr;</a>
+</nav>
 
-<div class="features">
-  <div class="features-header">
-    <h2>What You Get</h2>
-    <p>Everything in one self-contained Python app</p>
+<!-- ===== HERO ===== -->
+<section id="hero">
+  <div class="hero-badge">
+    <span class="hero-badge-dot"></span>
+    v2.0.0 · Generally Available
   </div>
-  <div class="features-grid">
-    <div class="feature-card">
-      <h3>Real Terminal Emulator</h3>
-      <p>Full xterm.js terminal with PTY backend. Tmux session persistence survives page reloads and reconnects. Multiple tabs.</p>
-    </div>
-    <div class="feature-card">
-      <h3>Chat Interface</h3>
-      <p>Persistent conversations with streaming responses, markdown rendering, syntax highlighting, and session export.</p>
-    </div>
-    <div class="feature-card">
-      <h3>SSH Remote Servers</h3>
-      <p>5-step wizard: auto-generate SSH keys, push to remote, verify connection. Import from ~/.ssh/config. Nobody else has this.</p>
-    </div>
-    <div class="feature-card">
-      <h3>Multi-User Auth + RBAC</h3>
-      <p>Password auth with bcrypt, admin/user roles, rate limiting. Scoped terminal output per user. 191 security tests.</p>
-    </div>
-    <div class="feature-card">
-      <h3>Autonomous Mode</h3>
-      <p>Set a task, walk away. Claude works in tmux with auto-restart. Monitor progress from your phone.</p>
-    </div>
-    <div class="feature-card">
-      <h3>PWA + Mobile</h3>
-      <p>Install as a native app on your phone or tablet. Offline-capable service worker. Full functionality on any screen size.</p>
+
+  <h1 class="hero-title">
+    <span id="typed-text"></span><span class="cursor-blink"></span>
+  </h1>
+
+  <p class="hero-subtitle">
+    <span id="subtitle-text" class="cycle-text">Your AI dev team, in any browser</span>
+  </p>
+
+  <div class="hero-cta-group">
+    <a href="https://github.com/rayketcham-lab/qn-claude-web" class="btn-primary">
+      <span>&#9733;</span> Star on GitHub
+    </a>
+    <a href="#features" class="btn-secondary">
+      See What's Inside &darr;
+    </a>
+  </div>
+
+  <div class="scroll-cue">
+    <div class="scroll-arrow"></div>
+  </div>
+</section>
+
+<!-- ===== STATS ===== -->
+<section id="stats">
+  <div class="container">
+    <div class="stats-grid">
+      <div class="stat-item reveal">
+        <span class="stat-number" data-target="624" data-suffix="">0</span>
+        <div class="stat-label">Tests Passing</div>
+      </div>
+      <div class="stat-item reveal reveal-delay-1">
+        <span class="stat-number" data-target="35" data-suffix="">0</span>
+        <div class="stat-label">Security Rules</div>
+      </div>
+      <div class="stat-item reveal reveal-delay-2">
+        <span class="stat-number" data-target="14" data-suffix="">0</span>
+        <div class="stat-label">Vendored Deps</div>
+      </div>
+      <div class="stat-item reveal reveal-delay-3">
+        <span class="stat-number" data-target="0" data-suffix="">—</span>
+        <div class="stat-label">Build Steps</div>
+      </div>
     </div>
   </div>
-</div>
+</section>
 
-<div class="features">
-  <div class="features-header">
-    <h2>How It Compares</h2>
-    <p>Feature comparison with other Claude Code web UIs</p>
+<!-- ===== FEATURES ===== -->
+<section id="features">
+  <div class="container">
+    <div class="section-header reveal">
+      <div class="section-badge">Features</div>
+      <h2 class="section-title">Everything you need.<br>Nothing you don't.</h2>
+      <p class="section-desc">One Python file. Zero npm. Zero Docker. Zero build step. Self-contained and ready in 3 commands.</p>
+    </div>
+    <div class="features-grid">
+
+      <div class="feature-card reveal">
+        <div class="feature-icon icon-cyan">&#128421;</div>
+        <div class="feature-title">Real Terminal — PTY + tmux</div>
+        <div class="feature-desc">Full xterm.js terminal backed by a real PTY process. tmux sessions persist across disconnects, page refreshes, and browser restarts. Multiple tabs, native keybindings.</div>
+      </div>
+
+      <div class="feature-card reveal reveal-delay-1">
+        <div class="feature-icon icon-purple">&#129302;</div>
+        <div class="feature-title">AI Agent Teams</div>
+        <div class="feature-desc">20+ specialized Claude Code agents — Architect, Builder, Tester, SecOps, DevOps, and more. Orchestrate multi-agent workflows from a single UI with full audit trails.</div>
+      </div>
+
+      <div class="feature-card reveal reveal-delay-2">
+        <div class="feature-icon icon-cyan">&#128274;</div>
+        <div class="feature-title">SSH Remote Servers</div>
+        <div class="feature-desc">5-step guided wizard: auto-generate SSH keys, exchange with remote autonomously via sshpass, verify connection. Import from ~/.ssh/config. Nobody else has this.</div>
+      </div>
+
+      <div class="feature-card reveal reveal-delay-3">
+        <div class="feature-icon icon-green">&#9889;</div>
+        <div class="feature-title">Autonomous Mode</div>
+        <div class="feature-desc">Set a task, walk away. Claude works in tmux with configurable auto-restart. Check progress from your phone. Wake up to a finished PR.</div>
+      </div>
+
+      <div class="feature-card reveal reveal-delay-4">
+        <div class="feature-icon icon-orange">&#128100;</div>
+        <div class="feature-title">Multi-User Auth + RBAC</div>
+        <div class="feature-desc">bcrypt password auth, admin/user roles, rate limiting, account lockout, session timeout, CSRF protection, per-user credential isolation in team mode.</div>
+      </div>
+
+      <div class="feature-card reveal reveal-delay-5">
+        <div class="feature-icon icon-purple">&#128241;</div>
+        <div class="feature-title">Mobile PWA</div>
+        <div class="feature-desc">Install as a native app on iOS or Android. Responsive layout adapts from widescreen to thumb-reach. Full functionality on any screen size — no compromises.</div>
+      </div>
+
+    </div>
   </div>
-  <div class="compare">
-    <table>
-      <tr><th>Feature</th><th>QN Claude Web</th><th>CloudCLI (9K stars)</th><th>claude.ai/code</th></tr>
-      <tr><td>Real Terminal (PTY + tmux)</td><td class="yes">Yes</td><td class="no">Plugin only</td><td class="no">Sandboxed VM</td></tr>
-      <tr><td>SSH Remote Servers</td><td class="yes">Yes</td><td class="no">No</td><td class="no">GitHub only</td></tr>
-      <tr><td>Multi-User Auth + RBAC</td><td class="yes">Yes</td><td class="no">No</td><td class="yes">Enterprise</td></tr>
-      <tr><td>Autonomous Mode</td><td class="yes">Yes</td><td class="no">No</td><td class="yes">Cloud only</td></tr>
-      <tr><td>Self-Hosted</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td></tr>
-      <tr><td>No Build Step</td><td class="yes">Yes</td><td class="no">React/Vite</td><td class="no">Cloud</td></tr>
-      <tr><td>PWA Mobile</td><td class="yes">Yes</td><td class="no">Responsive</td><td class="yes">Web app</td></tr>
-    </table>
+</section>
+
+<!-- ===== TERMINAL SHOWCASE ===== -->
+<section id="showcase">
+  <div class="container">
+    <div class="showcase-layout">
+      <div class="showcase-text reveal">
+        <div class="section-badge" style="background:rgba(0,255,157,0.08);border-color:rgba(0,255,157,0.2);color:var(--green);">Zero Friction Setup</div>
+        <h2>3 commands.<br>Up and running.</h2>
+        <p>Download, install, access. No npm, no Docker, no build step. All 14 Python dependencies are vendored. The installer bakes SHA-256 hashes for every file.</p>
+        <ul class="feature-list">
+          <li><span class="check-icon">&#10003;</span><div>Single <strong>self-extracting .sh</strong> installer with integrity verification</div></li>
+          <li><span class="check-icon">&#10003;</span><div><strong>systemd service</strong> auto-configured and ready on install</div></li>
+          <li><span class="check-icon">&#10003;</span><div><strong>HTTPS</strong> auto-cert generation or bring your own certificate</div></li>
+          <li><span class="check-icon">&#10003;</span><div>Works on <strong>Linux, macOS, WSL, Docker</strong> — one installer covers all</div></li>
+        </ul>
+      </div>
+
+      <div class="terminal-window reveal reveal-delay-2">
+        <div class="terminal-chrome">
+          <span class="dot dot-red"></span>
+          <span class="dot dot-yellow"></span>
+          <span class="dot dot-green"></span>
+          <span class="terminal-title">bash &mdash; install.sh</span>
+        </div>
+        <div class="terminal-body">
+          <span class="t-line t-comment"># 1. Download the installer</span>
+          <span class="t-line"><span class="t-prompt">$</span> <span class="t-cmd">curl -O https://your-server/qn-code-assistant-v2.0.0.sh</span></span>
+          <span class="t-line t-output">  % Total ... 100 2.1M  2.1M/s   00:00</span>
+          <span class="t-line">&nbsp;</span>
+          <span class="t-line t-comment"># 2. Install — verifies SHA-256 hashes</span>
+          <span class="t-line"><span class="t-prompt">$</span> <span class="t-cmd">bash qn-code-assistant-v2.0.0.sh</span></span>
+          <span class="t-line t-success">  ✓ Hash verification passed (329 files)</span>
+          <span class="t-line t-success">  ✓ systemd service enabled and started</span>
+          <span class="t-line t-success">  ✓ Listening on :5001</span>
+          <span class="t-line">&nbsp;</span>
+          <span class="t-line t-comment"># 3. Open in browser</span>
+          <span class="t-line"><span class="t-prompt">$</span> <span class="t-cmd">open http://192.168.1.241:5001</span></span>
+          <span class="t-line">&nbsp;</span>
+          <span class="t-line"><span class="t-path">&gt;</span> <span class="t-success">QN Code Assistant v2.0.0 ready</span> <span class="t-warn">&#9646;</span></span>
+        </div>
+      </div>
+    </div>
   </div>
-</div>
+</section>
 
-<div class="cta">
-  <a href="https://github.com/rayketcham-lab/qn-claude-web" class="cta-btn">View on GitHub</a>
-</div>
+<div class="divider"></div>
 
-<div class="footer">
-  <p>QN Claude Web is not affiliated with Anthropic, PBC. Apache-2.0 License. | <a href="https://github.com/rayketcham-lab/qn-claude-web">GitHub</a></p>
-</div>
+<!-- ===== AGENTS ===== -->
+<section id="agents">
+  <div class="container">
+    <div class="agents-layout">
+      <div class="agents-text reveal">
+        <div class="section-badge">Agent Architecture</div>
+        <h2>20+ specialized agents,<br>one unified UI</h2>
+        <p>Every agent has a distinct role, shared context, and cross-agent awareness. They coordinate automatically — Architect designs, Builder implements, Tester verifies, SecOps audits.</p>
+        <ul class="feature-list">
+          <li><span class="check-icon">&#10003;</span><div><strong>Sentinel protocol</strong> — agents self-monitor context load and compact autonomously</div></li>
+          <li><span class="check-icon">&#10003;</span><div><strong>Shared memory</strong> — decisions persist across sessions in MEMORY.md</div></li>
+          <li><span class="check-icon">&#10003;</span><div><strong>Audit trails</strong> — every agent action logged to structured JSON audit log</div></li>
+          <li><span class="check-icon">&#10003;</span><div><strong>Veto authority</strong> — SecOps can block merges, Architect owns API contracts</div></li>
+        </ul>
+      </div>
 
-<script src="https://unpkg.com/asciinema-player@3.7.1/dist/bundle/asciinema-player.min.js"></script>
+      <div class="agents-visual reveal reveal-delay-2">
+        <div class="agent-center">
+          <span>&#129504;</span>
+          <span class="agent-center-label">Orchestrator</span>
+        </div>
+        <div class="agents-orbit">
+          <span class="agent-pill active"><span class="agent-pill-icon">&#128736;</span> Architect</span>
+          <span class="agent-pill"><span class="agent-pill-icon">&#128296;</span> Builder</span>
+          <span class="agent-pill"><span class="agent-pill-icon">&#9989;</span> Tester</span>
+          <span class="agent-pill"><span class="agent-pill-icon">&#128274;</span> SecOps</span>
+          <span class="agent-pill"><span class="agent-pill-icon">&#128640;</span> DevOps</span>
+          <span class="agent-pill"><span class="agent-pill-icon">&#128269;</span> Auditor</span>
+          <span class="agent-pill"><span class="agent-pill-icon">&#128221;</span> Documenter</span>
+          <span class="agent-pill"><span class="agent-pill-icon">&#127987;</span> Sentinel</span>
+          <span class="agent-pill"><span class="agent-pill-icon">&#128200;</span> Analyst</span>
+          <span class="agent-pill"><span class="agent-pill-icon">&#127760;</span> SSH Wizard</span>
+          <span class="agent-pill"><span class="agent-pill-icon">+10</span> more&hellip;</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== COMPARISON ===== -->
+<section id="comparison">
+  <div class="container">
+    <div class="section-header reveal">
+      <div class="section-badge">Comparison</div>
+      <h2 class="section-title">How it stacks up</h2>
+      <p class="section-desc">Feature comparison with other Claude Code web interfaces</p>
+    </div>
+
+    <div class="compare-wrapper reveal">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th>Feature</th>
+            <th class="col-qn">QN Code Assistant</th>
+            <th>CloudCLI &nbsp;<span style="font-weight:400;opacity:.5">(9K stars)</span></th>
+            <th>claude.ai/code</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Real Terminal (PTY + tmux)</td>
+            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> Yes</span></td>
+            <td><span class="cell-no">&#215; Plugin only</span></td>
+            <td><span class="cell-no">&#215; Sandboxed VM</span></td>
+          </tr>
+          <tr>
+            <td>SSH Remote Servers</td>
+            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> Yes — wizard + auto key exchange</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-no">&#215; GitHub only</span></td>
+          </tr>
+          <tr>
+            <td>Multi-User Auth + RBAC</td>
+            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> Yes — bcrypt, admin/user</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-partial">&#8764; Enterprise tier</span></td>
+          </tr>
+          <tr>
+            <td>AI Agent Teams (20+)</td>
+            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> Yes — orchestrated</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+          </tr>
+          <tr>
+            <td>Autonomous Mode</td>
+            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> Yes — tmux auto-restart</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-partial">&#8764; Cloud only</span></td>
+          </tr>
+          <tr>
+            <td>Self-Hosted</td>
+            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> Yes</span></td>
+            <td><span class="cell-yes"><span class="check">&#10003;</span> Yes</span></td>
+            <td><span class="cell-no">&#215; SaaS only</span></td>
+          </tr>
+          <tr>
+            <td>Zero Build Step</td>
+            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> Yes — pure Python</span></td>
+            <td><span class="cell-no">&#215; React + Vite</span></td>
+            <td><span class="cell-no">&#215; Cloud</span></td>
+          </tr>
+          <tr>
+            <td>PWA + Mobile</td>
+            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> Yes — installable</span></td>
+            <td><span class="cell-partial">&#8764; Responsive only</span></td>
+            <td><span class="cell-yes"><span class="check">&#10003;</span> Yes</span></td>
+          </tr>
+          <tr>
+            <td>Security Test Suite</td>
+            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> 624 tests</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-no">&#215; Closed source</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ===== CTA ===== -->
+<section id="cta">
+  <div class="container">
+    <h2 class="cta-title reveal">
+      Your AI dev team.<br>
+      <span class="grad">Yours to own.</span>
+    </h2>
+    <p class="cta-sub reveal reveal-delay-1">
+      Self-hosted. No SaaS fees. No vendor lock-in. Apache-2.0.
+    </p>
+    <div class="cta-buttons reveal reveal-delay-2">
+      <a href="https://github.com/rayketcham-lab/qn-claude-web" class="btn-primary" style="font-size:1.05rem;padding:1rem 2.5rem;">
+        &#9733; &nbsp;View on GitHub
+      </a>
+      <a href="#features" class="btn-secondary" style="font-size:1.05rem;padding:1rem 2.5rem;">
+        &#128196; &nbsp;Read the Docs
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ===== FOOTER ===== -->
+<footer>
+  <p>
+    QN Code Assistant is not affiliated with Anthropic, PBC. &nbsp;&middot;&nbsp;
+    <a href="https://github.com/rayketcham-lab/qn-claude-web/blob/main/LICENSE">Apache-2.0 License</a>
+    &nbsp;&middot;&nbsp;
+    <a href="https://github.com/rayketcham-lab/qn-claude-web">GitHub</a>
+    &nbsp;&middot;&nbsp;
+    <a href="https://github.com/rayketcham-lab/qn-claude-web/blob/main/SECURITY.md">Security Policy</a>
+  </p>
+</footer>
+
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-  AsciinemaPlayer.create(
-    'demos/quick-start.cast',
-    document.getElementById('player'),
-    {
-      theme: 'monokai',
-      fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-      fontSize: '14px',
-      fit: 'width',
-      autoPlay: true,
-      speed: 1.2,
-      idleTimeLimit: 2,
-      terminalLineHeight: 1.3
+// ===================================================================
+// CONSTELLATION CANVAS
+// ===================================================================
+(function() {
+  const canvas = document.getElementById('constellation-canvas');
+  const ctx = canvas.getContext('2d');
+  let W, H, nodes, animId;
+  const NODE_COUNT = 80;
+  const CONNECT_DIST = 140;
+  const CYAN = [0, 212, 255];
+  const PURPLE = [139, 92, 246];
+
+  function resize() {
+    W = canvas.width  = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+  }
+
+  function randomNode() {
+    return {
+      x: Math.random() * W,
+      y: Math.random() * H,
+      vx: (Math.random() - 0.5) * 0.25,
+      vy: (Math.random() - 0.5) * 0.25,
+      r: Math.random() * 1.8 + 0.8,
+      pulse: Math.random() * Math.PI * 2,
+      pulseSpeed: 0.015 + Math.random() * 0.02,
+      color: Math.random() > 0.65 ? PURPLE : CYAN
+    };
+  }
+
+  function init() {
+    resize();
+    nodes = Array.from({ length: NODE_COUNT }, randomNode);
+  }
+
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+
+    // Update
+    for (const n of nodes) {
+      n.x += n.vx;
+      n.y += n.vy;
+      n.pulse += n.pulseSpeed;
+      if (n.x < -20) n.x = W + 20;
+      if (n.x > W + 20) n.x = -20;
+      if (n.y < -20) n.y = H + 20;
+      if (n.y > H + 20) n.y = -20;
     }
-  );
-});
+
+    // Edges
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const a = nodes[i], b = nodes[j];
+        const dx = a.x - b.x, dy = a.y - b.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < CONNECT_DIST) {
+          const alpha = (1 - dist / CONNECT_DIST) * 0.28;
+          // Blend color between the two nodes
+          const cr = Math.round(lerp(a.color[0], b.color[0], 0.5));
+          const cg = Math.round(lerp(a.color[1], b.color[1], 0.5));
+          const cb = Math.round(lerp(a.color[2], b.color[2], 0.5));
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.strokeStyle = `rgba(${cr},${cg},${cb},${alpha})`;
+          ctx.lineWidth = 0.8;
+          ctx.stroke();
+        }
+      }
+    }
+
+    // Nodes
+    for (const n of nodes) {
+      const glow = 0.65 + 0.35 * Math.sin(n.pulse);
+      const [r, g, b] = n.color;
+      // Outer glow
+      const grad = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.r * 5);
+      grad.addColorStop(0, `rgba(${r},${g},${b},${0.35 * glow})`);
+      grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, n.r * 5, 0, Math.PI * 2);
+      ctx.fillStyle = grad;
+      ctx.fill();
+      // Core
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${r},${g},${b},${0.7 * glow})`;
+      ctx.fill();
+    }
+
+    animId = requestAnimationFrame(draw);
+  }
+
+  window.addEventListener('resize', () => { resize(); });
+  init();
+  draw();
+})();
+
+
+// ===================================================================
+// TYPING EFFECT + SUBTITLE CYCLE
+// ===================================================================
+(function() {
+  const TITLE = 'QN Code Assistant';
+  const el = document.getElementById('typed-text');
+  let idx = 0;
+
+  function typeNext() {
+    if (idx <= TITLE.length) {
+      el.textContent = TITLE.slice(0, idx);
+      idx++;
+      setTimeout(typeNext, idx === 1 ? 200 : 55 + Math.random() * 40);
+    }
+  }
+  setTimeout(typeNext, 400);
+
+  const subtitles = [
+    'Your AI dev team, in any browser',
+    'tmux sessions that never die',
+    'SSH into anything, from anywhere',
+    '20+ specialized agents at your command',
+    'Autonomous mode. Set it. Forget it.',
+    'Self-hosted. No SaaS fees. No lock-in.',
+  ];
+  const subEl = document.getElementById('subtitle-text');
+  let subIdx = 0;
+
+  function fadeToNext() {
+    subEl.style.transition = 'opacity 0.4s';
+    subEl.style.opacity = '0';
+    setTimeout(() => {
+      subIdx = (subIdx + 1) % subtitles.length;
+      subEl.textContent = subtitles[subIdx];
+      subEl.style.opacity = '1';
+    }, 420);
+  }
+  setInterval(fadeToNext, 3200);
+})();
+
+
+// ===================================================================
+// SCROLL REVEAL
+// ===================================================================
+(function() {
+  const revealEls = document.querySelectorAll('.reveal');
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('visible');
+        obs.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.12 });
+  revealEls.forEach(el => obs.observe(el));
+})();
+
+
+// ===================================================================
+// ANIMATED STAT COUNTERS
+// ===================================================================
+(function() {
+  const statEls = document.querySelectorAll('.stat-number[data-target]');
+
+  function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+
+  function animateCounter(el) {
+    const target = parseInt(el.dataset.target, 10);
+    if (target === 0) {
+      el.textContent = '0';
+      return;
+    }
+    const duration = 1600;
+    const start = performance.now();
+    function update(now) {
+      const elapsed = now - start;
+      const progress = Math.min(elapsed / duration, 1);
+      const value = Math.round(easeOut(progress) * target);
+      el.textContent = value.toLocaleString();
+      if (progress < 1) requestAnimationFrame(update);
+    }
+    requestAnimationFrame(update);
+  }
+
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        animateCounter(e.target);
+        obs.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.5 });
+
+  statEls.forEach(el => obs.observe(el));
+})();
+
+
+// ===================================================================
+// AGENT PILL CYCLE HIGHLIGHT
+// ===================================================================
+(function() {
+  const pills = document.querySelectorAll('.agent-pill');
+  let current = 0;
+  setInterval(() => {
+    pills[current].classList.remove('active');
+    current = (current + 1) % pills.length;
+    pills[current].classList.add('active');
+  }, 1100);
+})();
 </script>
 </body>
 </html>

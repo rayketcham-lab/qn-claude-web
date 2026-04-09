@@ -6,6 +6,7 @@ services:
     volumes:
       # Persistent config and data — host paths take precedence over image defaults
       - ./config.json:/app/config.json
+      - ./auth.json:/app/auth.json
       - ./sessions:/app/sessions
       - ./user-data:/app/user-data
       # Mount the host ~/.claude directory read-only so the container can reach

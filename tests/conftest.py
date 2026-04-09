@@ -1,7 +1,7 @@
 """Shared test fixtures for QN Code Assistant"""
-import sys
-import os
 import json
+import os
+import sys
 import tempfile
 
 # Add vendor and project to path

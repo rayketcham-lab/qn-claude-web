@@ -971,5 +971,12 @@
 
     <script src="/static/js/app.js?v=1.5.1"></script>
     <script src="/static/js/sw-init.js?v=1.5.1"></script>
+    <script src="/static/js/issue-reporter.js?v=2.2.0"></script>
+    <script>
+        IssueReporter.init({
+            endpoint: "/api/report-issue",
+            projectName: "QN Code Assistant"
+        });
+    </script>
 </body>
 </html>

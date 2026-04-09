@@ -33,6 +33,8 @@ ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=/opt/claude-web/sessions /opt/claude-web/backups /opt/claude-web/certs
 ReadWritePaths=/opt/claude-web/config.json /opt/claude-web/usage.json
+ReadWritePaths=/opt/claude-web/audit.log /opt/claude-web/auth.json /opt/claude-web/user-data
+ReadWritePaths=/home/pleb/.claude/agent-logs
 CapabilityBoundingSet=
 RestrictSUIDSGID=true
 

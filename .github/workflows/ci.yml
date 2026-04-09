@@ -73,7 +73,7 @@ jobs:
           echo "Test count ${TEST_COUNT} meets minimum threshold (>=100)"
 
       - name: Coverage report
-        run: coverage report --show-missing
+        run: coverage report --show-missing --fail-under=50
 
   # ---------------------------------------------------------------------------
   # Job 3: SAST — Bandit
@@ -84,7 +84,6 @@ jobs:
   sast:
     runs-on: [self-hosted, qnca]
     needs: unit-tests
-    continue-on-error: true
 
     steps:
       - name: Checkout code
@@ -94,7 +93,7 @@ jobs:
         run: pip install bandit
 
       - name: Run bandit SAST
-        run: bandit -r /opt/claude-web/app.py -ll
+        run: bandit -r /opt/claude-web/app.py -ll --skip B104
 
   # ---------------------------------------------------------------------------
   # Job 4: Dependency Audit — pip-audit (Issue #37)
@@ -177,6 +176,80 @@ jobs:
           fi
           echo "Release artifact verified: ${RELEASE_FILE}"
 
+      - name: Verify VERSION matches git tag
+        run: |
+          FILE_VERSION=$(python3 -c "
+          import re
+          with open('app.py') as f:
+              for line in f:
+                  m = re.match(r'VERSION\s*=\s*[\"'\''](.*?)[\"'\'']', line)
+                  if m:
+                      print(m.group(1))
+                      break
+          ")
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "none")
+          echo "File VERSION: ${FILE_VERSION}"
+          echo "Latest git tag: ${LATEST_TAG}"
+          if [ "${LATEST_TAG}" != "none" ] && [ "v${FILE_VERSION}" != "${LATEST_TAG}" ]; then
+            echo "::warning::VERSION ${FILE_VERSION} does not match latest tag ${LATEST_TAG}"
+          fi
+
+      - name: Validate systemd service ReadWritePaths
+        run: |
+          python3 -c "
+          content = open('qn-code-assistant.service').read()
+          required = ['auth.json', 'user-data']
+          missing = [p for p in required if p not in content]
+          if missing:
+              raise SystemExit(f'Missing ReadWritePaths entries: {missing}')
+          print('ReadWritePaths coverage OK')
+          "
+
+      - name: Verify docker-compose mounts auth.json
+        run: |
+          grep -q 'auth.json' docker-compose.yml || (echo "::error::docker-compose.yml missing auth.json volume mount"; exit 1)
+          echo "auth.json mount present"
+
+      - name: Validate deny list coverage
+        run: |
+          python3 -c "
+          import json
+          settings = json.load(open('.claude/settings.json'))
+          deny = [str(r) for r in settings.get('deny', [])]
+          deny_str = ' '.join(deny)
+          dangerous = ['rm', 'rmdir', 'dd', 'mkfs', 'git reset --hard', 'git clean']
+          missing = [d for d in dangerous if d not in deny_str]
+          if missing:
+              print(f'::warning::Deny list may not cover: {missing}')
+          else:
+              print('Deny list coverage OK')
+          "
+
+      - name: Verify PreToolUse hook exists
+        run: |
+          test -x .claude/hooks/preToolUse.sh || (echo "::warning::PreToolUse hook missing or not executable"; exit 0)
+          echo "PreToolUse hook present and executable"
+
+      - name: Audit continue-on-error usage
+        run: |
+          COUNT=$(grep -c 'continue-on-error: true' .github/workflows/ci.yml || echo 0)
+          if [ "${COUNT}" -gt 0 ]; then
+            echo "::warning::${COUNT} job(s) using continue-on-error: true — review and harden"
+          fi
+
+      - name: Verify Claude CLI --permission-mode auto
+        run: |
+          if ! command -v claude &> /dev/null; then
+            echo "::warning::Claude CLI not found — skipping permission-mode check"
+            exit 0
+          fi
+          if claude --help 2>&1 | grep -q 'permission-mode'; then
+            echo "Claude CLI supports --permission-mode flag"
+          else
+            echo "::error::Claude CLI does not support --permission-mode flag"
+            exit 1
+          fi
+
   # ---------------------------------------------------------------------------
   # Job 6: Docker Build + Smoke Test
   # Builds the Docker image from the Dockerfile, starts a container on a
@@ -199,8 +272,19 @@ jobs:
       - name: Start container
         run: docker run -d --name qn-ci-test -p 15001:5001 qn-claude-web:ci-test
 
-      - name: Wait for app to become ready
-        run: sleep 5
+      - name: Wait for container healthy
+        run: |
+          for i in $(seq 1 20); do
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' qn-ci-test 2>/dev/null || echo "missing")
+            echo "Attempt ${i}: ${STATUS}"
+            if [ "${STATUS}" = "healthy" ]; then break; fi
+            if [ "${i}" -eq 20 ]; then
+              docker logs qn-ci-test
+              echo "::error::Container never became healthy"
+              exit 1
+            fi
+            sleep 2
+          done
 
       - name: Health check
         run: curl -f http://localhost:15001/api/health

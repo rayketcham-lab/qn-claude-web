@@ -705,6 +705,13 @@ class ClaudeCodeWeb {
             // The server grace period keeps terminals alive for 30s, so a 3s delay here
             // means we only check once the connection is stable.
             this._scheduleDetachedCheck(3000);
+
+            // Attempt socket-based detached session query if we have a browser ID.
+            // The server responds with terminal_detached_list which triggers auto-reconnect.
+            // The REST-based _checkDetachedSessions serves as fallback if no response arrives.
+            if (sessionStorage.getItem('qn_browser_id')) {
+                this.socket.emit('terminal_list_detached', { browser_id: this._browserId });
+            }
         });
 
         this.socket.on('disconnect', (reason) => {
@@ -715,6 +722,22 @@ class ClaudeCodeWeb {
         });
 
         this.socket.on('reconnect_attempt', () => {});
+
+        // Auto-reconnect: server sends this in response to terminal_list_detached
+        this.socket.on('terminal_detached_list', (data) => {
+            const sessions = data.sessions || [];
+            if (sessions.length === 0) return;
+
+            // Cancel pending REST-based check since we got a socket response
+            clearTimeout(this._detachedCheckTimer);
+
+            // Auto-reconnect all detached sessions. Show banner first so the user
+            // can see what is being reconnected, then immediately trigger reconnects.
+            this._showTmuxReconnectBanner(sessions);
+            sessions.forEach(s => {
+                this.reconnectTmuxSession(s.name);
+            });
+        });
 
         // Terminal events
         this._pendingTerminalOutput = {};  // Buffer for output that arrives before terminal is created
@@ -1253,7 +1276,7 @@ class ClaudeCodeWeb {
         }
 
         // File tree (click on dir = navigate, click on file = view)
-        const fileTree = document.getElementById('file-tree');
+        const fileTree = document.getElementById('files-tree');
         if (fileTree) {
             fileTree.addEventListener('click', (e) => {
                 const item = e.target.closest('.file-item');
@@ -1269,7 +1292,7 @@ class ClaudeCodeWeb {
         }
 
         // Search results
-        const searchResults = document.getElementById('search-results');
+        const searchResults = document.getElementById('chat-search-results');
         if (searchResults) {
             searchResults.addEventListener('click', (e) => {
                 const item = e.target.closest('.search-result-item');
@@ -1277,6 +1300,51 @@ class ClaudeCodeWeb {
                 this.loadSessionById(item.dataset.sessionId);
                 searchResults.classList.add('hidden');
                 document.getElementById('chat-search-input').value = '';
+            });
+        }
+
+        // Touch shortcut buttons — send key sequences to active terminal
+        const touchControls = document.getElementById('touch-controls');
+        if (touchControls) {
+            touchControls.addEventListener('click', (e) => {
+                const btn = e.target.closest('.touch-key');
+                if (!btn) return;
+                const key = btn.dataset.key;
+                const keyMap = {
+                    'ctrl-c': '\x03', 'ctrl-d': '\x04', 'tab': '\t',
+                    'enter': '\r', 'escape': '\x1b', 'up': '\x1b[A', 'down': '\x1b[B'
+                };
+                const seq = keyMap[key];
+                if (seq && this.activeTerminalId) {
+                    this.socket.emit('terminal_input', {
+                        id: this.activeTerminalId, data: seq
+                    });
+                }
+            });
+        }
+
+        // Mobile sidebar open/close
+        const btnOpenSidebar = document.getElementById('btn-open-sidebar');
+        if (btnOpenSidebar) {
+            btnOpenSidebar.addEventListener('click', () => {
+                document.getElementById('sidebar').classList.add('sidebar-open');
+                document.getElementById('sidebar-overlay').classList.add('visible');
+            });
+        }
+
+        const btnHamburger = document.getElementById('btn-hamburger');
+        if (btnHamburger) {
+            btnHamburger.addEventListener('click', () => {
+                document.getElementById('sidebar').classList.remove('sidebar-open');
+                document.getElementById('sidebar-overlay').classList.remove('visible');
+            });
+        }
+
+        const sidebarOverlay = document.getElementById('sidebar-overlay');
+        if (sidebarOverlay) {
+            sidebarOverlay.addEventListener('click', () => {
+                document.getElementById('sidebar').classList.remove('sidebar-open');
+                sidebarOverlay.classList.remove('visible');
             });
         }
     }
@@ -1436,6 +1504,12 @@ class ClaudeCodeWeb {
 
         terminal.open(container);
 
+        // Reset mouse tracking modes — TUI apps (Claude Code CLI, vim, etc.)
+        // enable mouse capture and if they exit uncleanly, xterm.js stays in
+        // mouse mode. This forces normal selection and paste to work without Shift.
+        // Modes: 1000=normal, 1002=button-event, 1003=any-event, 1006=SGR extended
+        terminal.write('\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l');
+
         // Let browser handle copy/paste shortcuts instead of sending to PTY
         terminal.attachCustomKeyEventHandler((e) => {
             if ((e.ctrlKey || e.metaKey) && e.key === 'v') return false;
@@ -1471,7 +1545,8 @@ class ClaudeCodeWeb {
         this.switchTerminalTab(terminalId);
         this.renderTerminalTabs();
 
-        // Clear any initialization garbage (DA query responses, etc.)
+        // Clear screen and reset mouse tracking (TUI apps may leave it enabled)
+        termData.terminal.write('\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l');
         termData.terminal.write('\x1b[2J\x1b[H');
 
         const projectName = project.split('/').pop() || project;

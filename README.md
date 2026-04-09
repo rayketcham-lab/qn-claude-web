@@ -12,7 +12,7 @@ Python + Flask + xterm.js. No build step. Vendored dependencies. One command to 
 
 [![CI](https://github.com/rayketcham-lab/qn-claude-web/actions/workflows/ci.yml/badge.svg)](https://github.com/rayketcham-lab/qn-claude-web/actions/workflows/ci.yml)
 [![Security Scans](https://github.com/rayketcham-lab/qn-claude-web/actions/workflows/security.yml/badge.svg)](https://github.com/rayketcham-lab/qn-claude-web/actions/workflows/security.yml)
-[![Version](https://img.shields.io/badge/version-1.6.1-blue?logo=semver&logoColor=white)](https://github.com/rayketcham-lab/qn-claude-web/releases)
+[![Version](https://img.shields.io/badge/version-2.0.0-blue?logo=semver&logoColor=white)](https://github.com/rayketcham-lab/qn-claude-web/releases)
 [![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Vendored Deps](https://img.shields.io/badge/dependencies-vendored-brightgreen?logo=python&logoColor=white)](vendor/)
@@ -58,10 +58,10 @@ Key capabilities:
 
 ```bash
 # 1. Download
-curl -O https://your-server/qn-code-assistant-v1.6.1.sh
+curl -O https://your-server/qn-code-assistant-v2.0.0.sh
 
 # 2. Install
-bash qn-code-assistant-v1.6.1.sh
+bash qn-code-assistant-v2.0.0.sh
 
 # 3. Access
 # Open http://your-server:5001 in your browser
@@ -136,8 +136,8 @@ The Python dependencies are vendored — no additional pip installs required.
 ### Self-Extracting Installer (Recommended)
 
 ```bash
-curl -O https://your-server/qn-code-assistant-v1.6.1.sh
-bash qn-code-assistant-v1.6.1.sh
+curl -O https://your-server/qn-code-assistant-v2.0.0.sh
+bash qn-code-assistant-v2.0.0.sh
 ```
 
 The installer verifies SHA-256 hashes for all files, extracts to `/opt/claude-web`, and runs interactive setup.

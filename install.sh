@@ -130,12 +130,12 @@ show_platform_info() {
     echo ""
 }
 
-VERSION="1.6.0"
+VERSION="2.0.0"
 
 # SHA-256 hashes baked at build time
 declare -A FILE_HASHES=(
-    ["app.py"]="0e397ac0416b7d4076a6031a27c4e44a6e9e145075246e1271854732588dcb19"
-    ["static/js/app.js"]="083c81e93922cdf7f7cb7222f4d578dcf0abe5783649c4e32b7c30aca9b62f8b"
+    ["app.py"]="7e264434ea4649f5e865e77c0e539feb4f872fe3c1b54399da2414a9826517a2"
+    ["static/js/app.js"]="65c65302ba2a5ef9bbc00a0d40ae820545d4539795eb7879a55072c2dc812977"
     ["static/css/style.css"]="eaa4a345e73a72286e82967a51a33fe674df813ad964c5b0b534b6b73d3f1c44"
     ["templates/index.html"]="68ddb22e9b4aa634f87db9091fcb5acbb6ebfda431a73b5544f649d0088317f4"
     ["templates/login.html"]="d382dc550d57798de777d0ad43a1496593985d85fc74f7b378ee24518d2083f2"
@@ -146,7 +146,7 @@ declare -A FILE_HASHES=(
     ["apache-proxy.conf"]="5eab0edd895142e586693d410f82146cea4fd7dc0327c684cbf4b80c65fda248"
     ["maintenance.sh"]="69cb8b8938771c83b810d4736113bb1dfdb4a225d83858eb3e475a284ae0ecdc"
     ["start.sh"]="3c321fffe379a6ce9d1d3b782542e0c69e2348874a7fb5e26826d2f25b5306bc"
-    ["qn-code-assistant.service"]="cd941292f380608cfac567847a1aa18cc4326038d1debc1f65836e17305ff9d9"
+    ["qn-code-assistant.service"]="11cf96d81e62cc8954157fde2b9a2699a7d2de466c3a8b7e536d0fed64f4bbd5"
 )
 
 VENDOR_HASH="1ddb9ad9384df343937a83d208f5f3d7ff743170118973b0f6fcde65e20f3765"
@@ -349,18 +349,19 @@ check_prerequisites() {
         missing=1
     fi
 
-    # tmux (optional — needed for persistent terminal sessions)
+    # tmux (required — terminal sessions depend on tmux for persistence)
     if command -v tmux &> /dev/null; then
         log_info "tmux found"
     else
-        log_warn "tmux is not installed — persistent terminal sessions will not work"
+        log_error "tmux is not installed — required for terminal sessions"
         case "${DETECTED_PLATFORM}" in
-            macos)        log_warn "Install with: brew install tmux" ;;
-            linux-debian|wsl) log_warn "Install with: sudo apt install tmux" ;;
-            linux-rhel)   log_warn "Install with: sudo dnf install tmux" ;;
-            linux-arch)   log_warn "Install with: sudo pacman -S tmux" ;;
-            *)            log_warn "Install tmux via your system package manager" ;;
+            macos)        log_error "Install with: brew install tmux" ;;
+            linux-debian|wsl) log_error "Install with: sudo apt install tmux" ;;
+            linux-rhel)   log_error "Install with: sudo dnf install tmux" ;;
+            linux-arch)   log_error "Install with: sudo pacman -S tmux" ;;
+            *)            log_error "Install tmux via your system package manager" ;;
         esac
+        missing=1
     fi
 
     if [[ "${missing}" -eq 1 ]]; then
@@ -622,9 +623,13 @@ do_install() {
     fi
 
     # Restrict config files (contain sensitive data)
-    chmod 600 "${INSTALL_DIR}/config.json"
+    # 660 allows group (dev) access while blocking world
+    chmod 660 "${INSTALL_DIR}/config.json"
+    if [[ -f "${INSTALL_DIR}/auth.json" ]]; then
+        chmod 660 "${INSTALL_DIR}/auth.json"
+    fi
     if [[ -f "${INSTALL_DIR}/usage.json" ]]; then
-        chmod 600 "${INSTALL_DIR}/usage.json"
+        chmod 660 "${INSTALL_DIR}/usage.json"
     fi
 
     # Ensure no world-writable files
@@ -638,10 +643,10 @@ do_install() {
         done <<< "${world_writable}"
     fi
 
-    # Restrict directories
-    chmod 750 "${INSTALL_DIR}/sessions"
-    chmod 750 "${INSTALL_DIR}/backups"
-    chmod 750 "${INSTALL_DIR}/certs"
+    # Restrict directories (770 — group access for dev, no world)
+    chmod 770 "${INSTALL_DIR}/sessions"
+    chmod 770 "${INSTALL_DIR}/backups"
+    chmod 770 "${INSTALL_DIR}/certs"
 
     log_info "File permissions set"
     echo ""
