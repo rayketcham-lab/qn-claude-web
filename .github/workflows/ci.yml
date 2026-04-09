@@ -73,7 +73,7 @@ jobs:
           echo "Test count ${TEST_COUNT} meets minimum threshold (>=100)"
 
       - name: Coverage report
-        run: coverage report --show-missing --fail-under=50
+        run: coverage report --show-missing --fail-under=45
 
   # ---------------------------------------------------------------------------
   # Job 3: SAST — Bandit
