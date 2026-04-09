@@ -28,7 +28,7 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Install ruff
-        run: pip install ruff
+        run: pip install --break-system-packages ruff
 
       - name: Run ruff
         run: ruff check app.py tests/
@@ -54,7 +54,7 @@ jobs:
           rsync -a --delete "${GITHUB_WORKSPACE}/tests/" /opt/claude-web/tests/
 
       - name: Install coverage
-        run: pip install coverage
+        run: pip install --break-system-packages coverage
 
       - name: Run unit tests with coverage
         id: tests
@@ -90,7 +90,7 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Install bandit
-        run: pip install bandit
+        run: pip install --break-system-packages bandit
 
       - name: Run bandit SAST
         run: bandit -r /opt/claude-web/app.py -ll --skip B104
@@ -113,7 +113,7 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Install pip-audit
-        run: pip install pip-audit
+        run: pip install --break-system-packages pip-audit
 
       - name: Generate requirements from vendor dist-info
         run: |
