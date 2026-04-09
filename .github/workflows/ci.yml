@@ -178,15 +178,7 @@ jobs:
 
       - name: Verify VERSION matches git tag
         run: |
-          FILE_VERSION=$(python3 -c "
-          import re
-          with open('app.py') as f:
-              for line in f:
-                  m = re.match(r'VERSION\s*=\s*[\"'\''](.*?)[\"'\'']', line)
-                  if m:
-                      print(m.group(1))
-                      break
-          ")
+          FILE_VERSION=$(grep -oP '^VERSION\s*=\s*[\x27"]\K[^\x27"]+' app.py | head -1)
           LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "none")
           echo "File VERSION: ${FILE_VERSION}"
           echo "Latest git tag: ${LATEST_TAG}"
