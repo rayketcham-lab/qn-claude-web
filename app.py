@@ -2716,6 +2716,23 @@ def handle_connect():
 
     emit('connected', {'status': 'ok', 'browser_id': browser_id})
 
+    # Tell the client which terminals are actually alive on the server right
+    # now under its (possibly newly re-associated) ws_sid. Frontend uses this
+    # to drop zombie tabs that the server already reaped during a long
+    # disconnect, preventing the "POOF I lost both sessions" UX where stale
+    # tabs sit beside fresh auto-reconnected ones.
+    with active_terminals_lock:
+        owned = [
+            {
+                'id': tid,
+                'tmux_session': t.get('tmux_session'),
+                'project': t.get('project', ''),
+            }
+            for tid, t in active_terminals.items()
+            if t.get('ws_sid') == new_sid
+        ]
+    emit('terminal_sync', {'active_terminals': owned})
+
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -2784,6 +2801,9 @@ def handle_terminal_create(data):
     project_path = data.get('project', os.path.expanduser('~'))
     flags = data.get('flags', {})
     remote_host_id = data.get('remote_host_id')
+    # Client-provided initial terminal size (from xterm.js fitAddon)
+    cols = max(40, min(int(data.get('cols', 200)), 500))
+    rows = max(10, min(int(data.get('rows', 50)), 200))
     terminal_id = str(uuid.uuid4())
     tmux_name = _generate_tmux_name(terminal_id)
     log_file = os.path.join(AGENT_LOG_DIR, f'{tmux_name}.log')
@@ -2854,10 +2874,16 @@ def handle_terminal_create(data):
     # Unset CLAUDECODE to avoid nested-session detection when server runs inside Claude Code
     quoted_cmd = ' '.join(shlex.quote(c) for c in cmd)
     unset_prefix = 'unset CLAUDECODE; '
+
+    # Auto-update Claude Code before launching (local Claude engine only)
+    update_prefix = ''
+    if not remote_host_id and _engine.name == 'claude' and CONFIG.get('auto_update_claude', True):
+        update_prefix = claude_auto_update_command()
+
     if use_local_chdir:
-        tmux_shell_cmd = f'{unset_prefix}cd {shlex.quote(project_path)} && {env_prefix}{quoted_cmd}'
+        tmux_shell_cmd = f'{unset_prefix}cd {shlex.quote(project_path)} && {update_prefix}{env_prefix}{quoted_cmd}'
     else:
-        tmux_shell_cmd = f'{unset_prefix}{env_prefix}{quoted_cmd}'
+        tmux_shell_cmd = f'{unset_prefix}{update_prefix}{env_prefix}{quoted_cmd}'
 
     # Auto-restart loop: wrap command so Claude restarts after exit
     if auto_restart:
@@ -2866,7 +2892,8 @@ def handle_terminal_create(data):
 
     # Create the tmux session (detached)
     tmux_result = subprocess.run(
-        [TMUX_BIN, 'new-session', '-d', '-s', tmux_name, '-x', '200', '-y', '50',
+        [TMUX_BIN, 'new-session', '-d', '-s', tmux_name,
+         '-x', str(cols), '-y', str(rows),
          'bash', '-c', tmux_shell_cmd],
         capture_output=True, text=True,
     )
@@ -3005,7 +3032,7 @@ def handle_terminal_input(data):
 
 @socketio.on('terminal_resize')
 def handle_terminal_resize(data):
-    """Resize terminal"""
+    """Resize terminal PTY and tmux window to match the browser terminal size."""
     if not _ws_auth_check():
         return
     terminal_id = data.get('id')
@@ -3023,6 +3050,17 @@ def handle_terminal_resize(data):
             fcntl.ioctl(term['fd'], termios.TIOCSWINSZ, winsize)
         except (OSError, ValueError):
             pass
+        # Also resize the tmux window so the inner application sees the new size
+        tmux_session = term.get('tmux_session')
+        if tmux_session and TMUX_NAME_RE.match(tmux_session):
+            try:
+                subprocess.run(
+                    [TMUX_BIN, 'resize-window', '-t', tmux_session,
+                     '-x', str(cols), '-y', str(rows)],
+                    capture_output=True, timeout=5,
+                )
+            except Exception:
+                pass
 
 
 @socketio.on('terminal_kill')
@@ -5295,6 +5333,22 @@ def get_claude_version():
         return None
     except Exception:
         return None
+
+
+def claude_auto_update_command():
+    """Return a shell snippet that runs ``claude update`` before launching.
+
+    ``claude update`` is a no-op when already on the latest version and
+    performs an in-place upgrade otherwise.  The snippet is prepended to
+    the tmux shell command so the user sees the update output in their
+    terminal before Claude launches.
+
+    Returns an empty string when the feature is disabled or Claude CLI
+    is not installed.
+    """
+    if not get_claude_version():
+        return ''
+    return 'echo "Checking for Claude Code updates..."; claude update 2>/dev/null; '
 
 
 @api_v1.route('/status')

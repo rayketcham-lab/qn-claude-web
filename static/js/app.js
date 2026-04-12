@@ -723,6 +723,36 @@ class ClaudeCodeWeb {
 
         this.socket.on('reconnect_attempt', () => {});
 
+        // Server tells us, on every (re)connect, which terminals are still
+        // alive on its side under our current ws_sid. Drop any local tabs that
+        // the server already reaped during a long disconnect — otherwise the
+        // user sees zombie tabs sitting next to fresh auto-reconnected ones
+        // ("POOF I lost both sessions").
+        this.socket.on('terminal_sync', (data) => {
+            const aliveIds = new Set((data && data.active_terminals || []).map(t => t.id));
+            const localIds = Object.keys(this.terminals);
+            const zombies = localIds.filter(tid => !aliveIds.has(tid));
+            if (zombies.length === 0) return;
+            log('terminal_sync: reaping', zombies.length, 'zombie tabs:', zombies.map(t => t.substr(0, 8)));
+            zombies.forEach(tid => {
+                const term = this.terminals[tid];
+                if (!term) return;
+                try { term.terminal.dispose(); } catch (e) {}
+                try { term.container.remove(); } catch (e) {}
+                delete this.terminals[tid];
+            });
+            const remaining = Object.keys(this.terminals);
+            if (this.activeTerminalId && !this.terminals[this.activeTerminalId]) {
+                this.activeTerminalId = remaining.length ? remaining[remaining.length - 1] : null;
+                if (this.activeTerminalId) {
+                    this.switchTerminalTab(this.activeTerminalId);
+                } else {
+                    this.initTerminalWelcome();
+                }
+            }
+            this.renderTerminalTabs();
+        });
+
         // Auto-reconnect: server sends this in response to terminal_list_detached
         this.socket.on('terminal_detached_list', (data) => {
             const sessions = data.sessions || [];
@@ -865,8 +895,12 @@ class ClaudeCodeWeb {
                 if (tab.dataset.view === 'terminal' && this.activeTerminalId) {
                     const term = this.terminals[this.activeTerminalId];
                     if (term) {
-                        term.fitAddon.fit();
-                        term.terminal.focus();
+                        requestAnimationFrame(() => {
+                            requestAnimationFrame(() => {
+                                term.fitAddon.fit();
+                                term.terminal.focus();
+                            });
+                        });
                     }
                 }
                 if (tab.dataset.view === 'files' && this.selectedProject) {
@@ -1572,10 +1606,13 @@ class ClaudeCodeWeb {
             const projectName = term.project.split('/').pop() || term.project;
             this.elements.terminalProject.textContent = term.project;
 
-            // Fit after display
+            // Fit after display — double-rAF ensures flex layout has settled
+            // (single rAF often fires before the container has final dimensions)
             requestAnimationFrame(() => {
-                term.fitAddon.fit();
-                term.terminal.focus();
+                requestAnimationFrame(() => {
+                    term.fitAddon.fit();
+                    term.terminal.focus();
+                });
             });
         }
 
@@ -1676,10 +1713,20 @@ class ClaudeCodeWeb {
 
         const flags = this.getFlags();
 
+        // Estimate initial terminal size from container dimensions
+        // (xterm.js isn't created yet, so we estimate from the container and font metrics)
+        const termContainer = this.elements.terminalContainer;
+        const charWidth = 8.4;   // Approximate for 14px monospace
+        const charHeight = 17;   // Approximate for 14px monospace
+        const cols = Math.max(80, Math.floor((termContainer.clientWidth - 16) / charWidth));
+        const rows = Math.max(24, Math.floor((termContainer.clientHeight - 50) / charHeight));
+
         this.socket.emit('terminal_create', {
             project: this.selectedProject,
             flags: flags,
-            remote_host_id: this.selectedRemoteHostId || undefined
+            remote_host_id: this.selectedRemoteHostId || undefined,
+            cols: cols,
+            rows: rows
         });
     }
 
@@ -2264,7 +2311,14 @@ class ClaudeCodeWeb {
 
         if (viewName === 'terminal' && this.activeTerminalId) {
             const term = this.terminals[this.activeTerminalId];
-            if (term) { term.fitAddon.fit(); term.terminal.focus(); }
+            if (term) {
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        term.fitAddon.fit();
+                        term.terminal.focus();
+                    });
+                });
+            }
         }
         if (viewName === 'files' && this.selectedProject) {
             this.loadFiles(this._filesCurrentPath || this.selectedProject);
