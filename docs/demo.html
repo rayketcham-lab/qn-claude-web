@@ -618,7 +618,7 @@ footer a:hover { opacity: 1; }
   <div class="container">
     <div class="stats-grid">
       <div class="stat-item reveal">
-        <span class="stat-number" data-target="624" data-suffix="">0</span>
+        <span class="stat-number" data-target="685" data-suffix="">0</span>
         <div class="stat-label">Tests Passing</div>
       </div>
       <div class="stat-item reveal reveal-delay-1">
@@ -683,6 +683,12 @@ footer a:hover { opacity: 1; }
         <div class="feature-desc">Install as a native app on iOS or Android. Responsive layout adapts from widescreen to thumb-reach. Full functionality on any screen size — no compromises.</div>
       </div>
 
+      <div class="feature-card reveal reveal-delay-5">
+        <div class="feature-icon icon-green">&#128230;</div>
+        <div class="feature-title">Zero Host Deps — Bundled Runtime</div>
+        <div class="feature-desc">The installer ships a pinned musl Python 3.12 runtime built from <strong>python-build-standalone</strong>. No system Python required, no pip install, no version drift. Native x86_64 and aarch64 Linux builds — one <code>.sh</code>, everything inside.</div>
+      </div>
+
     </div>
   </div>
 </section>
@@ -694,12 +700,13 @@ footer a:hover { opacity: 1; }
       <div class="showcase-text reveal">
         <div class="section-badge" style="background:rgba(0,255,157,0.08);border-color:rgba(0,255,157,0.2);color:var(--green);">Zero Friction Setup</div>
         <h2>3 commands.<br>Up and running.</h2>
-        <p>Download, install, access. No npm, no Docker, no build step. All 14 Python dependencies are vendored. The installer bakes SHA-256 hashes for every file.</p>
+        <p>Download, install, access. No npm, no Docker, no build step — not even a system Python. All 14 Python packages are vendored, and a pinned musl Python 3.12 runtime ships inside the installer. SHA-256 hashes are baked into the script for every artifact.</p>
         <ul class="feature-list">
           <li><span class="check-icon">&#10003;</span><div>Single <strong>self-extracting .sh</strong> installer with integrity verification</div></li>
+          <li><span class="check-icon">&#10003;</span><div><strong>Bundled Python 3.12 runtime</strong> — no host Python, no pip, no version hunting</div></li>
           <li><span class="check-icon">&#10003;</span><div><strong>systemd service</strong> auto-configured and ready on install</div></li>
           <li><span class="check-icon">&#10003;</span><div><strong>HTTPS</strong> auto-cert generation or bring your own certificate</div></li>
-          <li><span class="check-icon">&#10003;</span><div>Works on <strong>Linux, macOS, WSL, Docker</strong> — one installer covers all</div></li>
+          <li><span class="check-icon">&#10003;</span><div>Native <strong>Linux x86_64 + aarch64</strong> builds; runs on bare-metal, VM, or WSL</div></li>
         </ul>
       </div>
 
@@ -711,20 +718,21 @@ footer a:hover { opacity: 1; }
           <span class="terminal-title">bash &mdash; install.sh</span>
         </div>
         <div class="terminal-body">
-          <span class="t-line t-comment"># 1. Download the installer</span>
-          <span class="t-line"><span class="t-prompt">$</span> <span class="t-cmd">curl -O https://your-server/qn-code-assistant-v2.0.0.sh</span></span>
-          <span class="t-line t-output">  % Total ... 100 2.1M  2.1M/s   00:00</span>
+          <span class="t-line t-comment"># 1. Download the installer for your arch (x86_64 or aarch64)</span>
+          <span class="t-line"><span class="t-prompt">$</span> <span class="t-cmd">curl -O https://your-server/qn-code-assistant-v2.0.0-linux-x86_64.sh</span></span>
+          <span class="t-line t-output">  % Total ... 100 119M  42M/s   00:02</span>
           <span class="t-line">&nbsp;</span>
-          <span class="t-line t-comment"># 2. Install — verifies SHA-256 hashes</span>
-          <span class="t-line"><span class="t-prompt">$</span> <span class="t-cmd">bash qn-code-assistant-v2.0.0.sh</span></span>
-          <span class="t-line t-success">  ✓ Hash verification passed (329 files)</span>
+          <span class="t-line t-comment"># 2. Install — verifies SHA-256 for app + bundled Python runtime</span>
+          <span class="t-line"><span class="t-prompt">$</span> <span class="t-cmd">bash qn-code-assistant-v2.0.0-linux-x86_64.sh</span></span>
+          <span class="t-line t-success">  ✓ App hash verified</span>
+          <span class="t-line t-success">  ✓ Python 3.12 runtime hash verified (PBS musl)</span>
           <span class="t-line t-success">  ✓ systemd service enabled and started</span>
           <span class="t-line t-success">  ✓ Listening on :5001</span>
           <span class="t-line">&nbsp;</span>
-          <span class="t-line t-comment"># 3. Open in browser</span>
+          <span class="t-line t-comment"># 3. Open in browser — no system Python installed</span>
           <span class="t-line"><span class="t-prompt">$</span> <span class="t-cmd">open http://192.168.1.241:5001</span></span>
           <span class="t-line">&nbsp;</span>
-          <span class="t-line"><span class="t-path">&gt;</span> <span class="t-success">QN Code Assistant v2.0.0 ready</span> <span class="t-warn">&#9646;</span></span>
+          <span class="t-line"><span class="t-path">&gt;</span> <span class="t-success">QN Claude Web v2.0.0 ready</span> <span class="t-warn">&#9646;</span></span>
         </div>
       </div>
     </div>
@@ -765,7 +773,7 @@ footer a:hover { opacity: 1; }
           <span class="agent-pill"><span class="agent-pill-icon">&#127987;</span> Sentinel</span>
           <span class="agent-pill"><span class="agent-pill-icon">&#128200;</span> Analyst</span>
           <span class="agent-pill"><span class="agent-pill-icon">&#127760;</span> SSH Wizard</span>
-          <span class="agent-pill"><span class="agent-pill-icon">+10</span> more&hellip;</span>
+          <span class="agent-pill"><span class="agent-pill-icon">+12</span> more&hellip;</span>
         </div>
       </div>
     </div>
@@ -841,8 +849,14 @@ footer a:hover { opacity: 1; }
             <td><span class="cell-yes"><span class="check">&#10003;</span> Yes</span></td>
           </tr>
           <tr>
+            <td>Bundled Python Runtime</td>
+            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> Yes — PBS musl 3.12</span></td>
+            <td><span class="cell-no">&#215; System Python</span></td>
+            <td><span class="cell-no">&#215; Cloud</span></td>
+          </tr>
+          <tr>
             <td>Security Test Suite</td>
-            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> 624 tests</span></td>
+            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> 685 tests</span></td>
             <td><span class="cell-no">&#215; None</span></td>
             <td><span class="cell-no">&#215; Closed source</span></td>
           </tr>
@@ -1011,6 +1025,7 @@ footer a:hover { opacity: 1; }
     '20+ specialized agents at your command',
     'Autonomous mode. Set it. Forget it.',
     'Self-hosted. No SaaS fees. No lock-in.',
+    'Bundled Python runtime. Zero host deps.',
   ];
   const subEl = document.getElementById('subtitle-text');
   let subIdx = 0;
