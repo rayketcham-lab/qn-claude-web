@@ -2,7 +2,7 @@
 
 **Self-hosted web UI for Claude Code CLI — access AI-powered development from any browser**
 
-Python + Flask + xterm.js. No build step. Vendored dependencies. One command to run.
+Flask + xterm.js. No build step. Vendored dependencies. Bundled Python 3.12 runtime. One command to run.
 
 [![Watch Demo](https://img.shields.io/badge/%E2%96%B6_Watch_Demo-in_browser-d40000?style=for-the-badge&logo=asciinema)](https://rayketcham-lab.github.io/qn-claude-web/demo.html)
 
@@ -13,7 +13,7 @@ Python + Flask + xterm.js. No build step. Vendored dependencies. One command to 
 [![CI](https://github.com/rayketcham-lab/qn-claude-web/actions/workflows/ci.yml/badge.svg)](https://github.com/rayketcham-lab/qn-claude-web/actions/workflows/ci.yml)
 [![Security Scans](https://github.com/rayketcham-lab/qn-claude-web/actions/workflows/security.yml/badge.svg)](https://github.com/rayketcham-lab/qn-claude-web/actions/workflows/security.yml)
 [![Version](https://img.shields.io/badge/version-2.0.0-blue?logo=semver&logoColor=white)](https://github.com/rayketcham-lab/qn-claude-web/releases)
-[![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.12%20bundled-blue?logo=python&logoColor=white)](https://github.com/astral-sh/python-build-standalone)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Vendored Deps](https://img.shields.io/badge/dependencies-vendored-brightgreen?logo=python&logoColor=white)](vendor/)
 [![No Build Step](https://img.shields.io/badge/build%20step-none-brightgreen)](https://github.com/rayketcham-lab/qn-claude-web)
@@ -67,7 +67,7 @@ bash qn-code-assistant-installer.sh
 # Open http://<server-ip>:5001 in your browser
 ```
 
-Or clone and run directly:
+Or clone and run directly (requires system Python 3.12+):
 
 ```bash
 git clone https://github.com/rayketcham-lab/qn-claude-web.git
@@ -123,11 +123,13 @@ Open `http://localhost:5001`. For LAN access: `http://<server-ip>:5001`
 
 ## Requirements
 
-- **Python 3.10+** — `python3 --version`
 - **tmux** — `tmux -V` (for session persistence)
 - **Claude Code CLI** — installed and available in `PATH`
 
-The Python dependencies are vendored — no additional pip installs required.
+The installer ships a bundled Python 3.12 runtime (musl, ~90MB compressed) — no system Python required.
+Python dependencies are vendored — no pip installs required.
+
+For the clone-and-run path, the bundled runtime is not present; you need Python 3.12+ on the host.
 
 ---
 
@@ -135,19 +137,28 @@ The Python dependencies are vendored — no additional pip installs required.
 
 ### Self-Extracting Installer (Recommended)
 
+Download the installer for your architecture and run it:
+
 ```bash
-curl -LO https://github.com/rayketcham-lab/qn-claude-web/releases/latest/download/qn-code-assistant-installer.sh
-bash qn-code-assistant-installer.sh
+ARCH=$(uname -m)
+curl -LO "https://github.com/rayketcham-lab/qn-claude-web/releases/latest/download/qn-code-assistant-v2.0.0-linux-${ARCH}.sh"
+bash "qn-code-assistant-v2.0.0-linux-${ARCH}.sh"
 ```
 
-The installer verifies SHA-256 hashes for all files, extracts to `/opt/claude-web`, and runs interactive setup.
+Direct downloads:
+- x86_64 (amd64): `qn-code-assistant-v2.0.0-linux-x86_64.sh`
+- aarch64 (arm64): `qn-code-assistant-v2.0.0-linux-aarch64.sh`
 
-### Manual Setup
+The installer verifies SHA-256 hashes, extracts the app and bundled Python 3.12 runtime to the install directory, and runs interactive setup. No system Python required.
+
+### Manual Setup (requires system Python 3.12+)
 
 ```bash
 git clone https://github.com/rayketcham-lab/qn-claude-web.git /opt/claude-web
 python3 /opt/claude-web/app.py
 ```
+
+Note: the clone-and-run path uses whatever `python3` is on `PATH`. For the bundled musl runtime, use the self-extracting installer above.
 
 ### Systemd Service
 
@@ -240,8 +251,10 @@ Two connection modes are supported:
 ### Stack
 
 - **Backend:** Flask + Flask-SocketIO (`async_mode='threading'`), single-file `app.py`
+- **Web server:** Werkzeug built-in WSGI server via `socketio.run()` — no gunicorn / uvicorn needed; threading mode owns the event loop for SocketIO long-polling and WebSockets
 - **Frontend:** Vanilla JS (`ClaudeCodeWeb` class in `static/js/app.js`), no framework, no build step
 - **Terminal:** xterm.js with PTY backend (`pty.fork()` + `select`), tmux for session persistence
+- **Runtime:** python-build-standalone (PBS) Python 3.12 musl, bundled in `runtime/` — no system Python dependency
 - **Dependencies:** 14 Python packages vendored in `vendor/` — no runtime pip installs
 
 ### Directory Structure

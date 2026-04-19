@@ -84,19 +84,19 @@ show_platform_info() {
     case "${DETECTED_PLATFORM}" in
         linux-debian)
             echo -e "  OS family: Debian / Ubuntu"
-            echo -e "  Python:    ${CYAN}sudo apt install python3${NC}"
+            echo -e "  Runtime:   Bundled Python 3.12 (musl) — no system Python required"
             echo -e "  tmux:      ${CYAN}sudo apt install tmux${NC}"
             echo -e "  Service:   systemd (install as root to register)"
             ;;
         linux-rhel)
             echo -e "  OS family: RHEL / CentOS / Fedora"
-            echo -e "  Python:    ${CYAN}sudo dnf install python3${NC}"
+            echo -e "  Runtime:   Bundled Python 3.12 (musl) — no system Python required"
             echo -e "  tmux:      ${CYAN}sudo dnf install tmux${NC}"
             echo -e "  Service:   systemd (install as root to register)"
             ;;
         linux-arch)
             echo -e "  OS family: Arch Linux"
-            echo -e "  Python:    ${CYAN}sudo pacman -S python${NC}"
+            echo -e "  Runtime:   Bundled Python 3.12 (musl) — no system Python required"
             echo -e "  tmux:      ${CYAN}sudo pacman -S tmux${NC}"
             echo -e "  Service:   systemd (install as root to register)"
             ;;
@@ -107,14 +107,14 @@ show_platform_info() {
             else
                 echo -e "  Homebrew:  ${YELLOW}not found — install from https://brew.sh${NC}"
             fi
-            echo -e "  Python:    ${CYAN}brew install python@3.12${NC}"
+            echo -e "  Runtime:   Bundled Python 3.12 (musl) — no system Python required"
             echo -e "  tmux:      ${CYAN}brew install tmux${NC}"
             echo -e "  Service:   systemd is ${RED}not available${NC} on macOS"
             echo -e "             Use launchd or start manually: ${CYAN}./start.sh${NC}"
             ;;
         wsl)
             echo -e "  OS family: Windows Subsystem for Linux"
-            echo -e "  Python:    ${CYAN}sudo apt install python3${NC}"
+            echo -e "  Runtime:   Bundled Python 3.12 (musl) — no system Python required"
             echo -e "  tmux:      ${CYAN}sudo apt install tmux${NC}"
             echo -e "  Service:   systemd availability depends on WSL version"
             echo -e "             WSL2 with systemd enabled: ${CYAN}sudo systemctl enable qn-code-assistant${NC}"
@@ -122,7 +122,7 @@ show_platform_info() {
             ;;
         *)
             echo -e "  OS family: Unknown Linux"
-            echo -e "  Python:    install python3.10+ via your package manager"
+            echo -e "  Runtime:   Bundled Python 3.12 (musl) — no system Python required"
             echo -e "  tmux:      install tmux via your package manager"
             echo -e "  Service:   check if systemd is available: ${CYAN}pidof systemd${NC}"
             ;;
@@ -134,8 +134,8 @@ VERSION="2.0.0"
 
 # SHA-256 hashes baked at build time
 declare -A FILE_HASHES=(
-    ["app.py"]="d6151024c57320da34b36f7bd5a569e2455ad9e3516d7625fb3999b18f0be4b2"
-    ["static/js/app.js"]="6a52f5f3354ca9b078266cc37e9b7e07743663ccc17dc81af521be43db8fe1f6"
+    ["app.py"]="ee257f08e42c8d21ed1289e43cd76227737826222f2aab5040e0cedb2e96a1cf"
+    ["static/js/app.js"]="343f919edaab0a6306f4d70e724f0b5d2d1e64a687231c6ab23f940bf8aabb03"
     ["static/css/style.css"]="eaa4a345e73a72286e82967a51a33fe674df813ad964c5b0b534b6b73d3f1c44"
     ["templates/index.html"]="b606ee365cdc2619c9e8632023955c84a63ee8b8ba666f742fb07927f86aa180"
     ["templates/login.html"]="d382dc550d57798de777d0ad43a1496593985d85fc74f7b378ee24518d2083f2"
@@ -145,10 +145,10 @@ declare -A FILE_HASHES=(
     ["static/icon.svg"]="62f098e754f05bc584ef68b681141961ed172a072bf10ab9e494356df27ce034"
     ["apache-proxy.conf"]="5eab0edd895142e586693d410f82146cea4fd7dc0327c684cbf4b80c65fda248"
     ["maintenance.sh"]="69cb8b8938771c83b810d4736113bb1dfdb4a225d83858eb3e475a284ae0ecdc"
-    ["start.sh"]="3c321fffe379a6ce9d1d3b782542e0c69e2348874a7fb5e26826d2f25b5306bc"
-    ["qn-code-assistant.service"]="11cf96d81e62cc8954157fde2b9a2699a7d2de466c3a8b7e536d0fed64f4bbd5"
-    ["build-installer.sh"]="db6dc407e3a806ec178903b39c09b45cda12c47a2cc6a3677742ae3609e9ae0f"
-    ["build-release.sh"]="5a0f7008fff516f377b4c9da3c1a3a44bdc6c5aaf65a1fa4827388c3e9880626"
+    ["start.sh"]="d2678221aebf63c1c41e8f07ec0d079fd85604dcdc27e16092f10a3c78c4f165"
+    ["qn-code-assistant.service"]="3da688ef8fa641c724e401f1c685c85364aeb1d2c9fde774622a706d306bf9a1"
+    ["build-installer.sh"]="474708fbc929a7401cc8236fb4e199650cbd0d19ba19ed9aea1a6ba446050e59"
+    ["build-release.sh"]="e24630b8843679a5ce0e57dd5b4c7426cc47b466ee98a4db9d32ccc290207dcf"
 )
 
 VENDOR_HASH="1ddb9ad9384df343937a83d208f5f3d7ff743170118973b0f6fcde65e20f3765"
@@ -312,6 +312,19 @@ verify_integrity() {
 # Prerequisite checks
 # -------------------------------------------------------------------
 
+verify_bundled_runtime() {
+    local runtime_py="${INSTALL_DIR}/runtime/bin/python3"
+    if [[ ! -x "${runtime_py}" ]]; then
+        log_error "Bundled runtime missing: ${runtime_py}"
+        log_error "runtime/ directory not found — did the self-extracting installer complete?"
+        log_error "Re-run the self-extracting .sh installer; do not run install.sh directly."
+        return 1
+    fi
+    local bundled_ver
+    bundled_ver="$("${runtime_py}" -V 2>&1 | awk '{print $2}')"
+    log_info "Python ${bundled_ver} (bundled)"
+}
+
 check_prerequisites() {
     log_step "Checking prerequisites..."
 
@@ -319,36 +332,9 @@ check_prerequisites() {
     detect_platform
     log_info "Platform: ${DETECTED_PLATFORM}"
 
-    local missing=0
-
-    # Python 3.10+
-    if command -v python3 &> /dev/null; then
-        local py_version
-        py_version="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
-        local py_major py_minor
-        py_major="$(echo "${py_version}" | cut -d. -f1)"
-        py_minor="$(echo "${py_version}" | cut -d. -f2)"
-        if [[ "${py_major}" -lt 3 ]] || { [[ "${py_major}" -eq 3 ]] && [[ "${py_minor}" -lt 10 ]]; }; then
-            log_error "Python 3.10+ required, found ${py_version}"
-            case "${DETECTED_PLATFORM}" in
-                macos)        log_warn "Install with: brew install python@3.12" ;;
-                linux-debian|wsl) log_warn "Install with: sudo apt install python3.12" ;;
-                linux-rhel)   log_warn "Install with: sudo dnf install python3.12" ;;
-                linux-arch)   log_warn "Install with: sudo pacman -S python" ;;
-            esac
-            missing=1
-        else
-            log_info "Python ${py_version} found"
-        fi
-    else
-        log_error "Python 3 is not installed"
-        case "${DETECTED_PLATFORM}" in
-            macos)        log_warn "Install with: brew install python@3.12" ;;
-            linux-debian|wsl) log_warn "Install with: sudo apt install python3" ;;
-            linux-rhel)   log_warn "Install with: sudo dnf install python3" ;;
-            linux-arch)   log_warn "Install with: sudo pacman -S python" ;;
-        esac
-        missing=1
+    # Bundled Python runtime (mandatory)
+    if ! verify_bundled_runtime; then
+        exit 1
     fi
 
     # tmux (optional — needed for persistent terminal sessions)
@@ -365,12 +351,6 @@ check_prerequisites() {
         esac
     fi
 
-    if [[ "${missing}" -eq 1 ]]; then
-        echo ""
-        log_error "Missing prerequisites. Please install them and try again."
-        exit 1
-    fi
-
     echo ""
 }
 
@@ -380,7 +360,7 @@ check_prerequisites() {
 
 write_default_config() {
     local secret_key
-    secret_key="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+    secret_key="$("${INSTALL_DIR}/runtime/bin/python3" -c 'import secrets; print(secrets.token_hex(32))')"
     cat > "${INSTALL_DIR}/config.json" << DEFCONFIG_EOF
 {
     "host": "0.0.0.0",
@@ -469,7 +449,7 @@ interactive_setup() {
         done
 
         # Hash password using vendored werkzeug
-        cfg_password_hash="$(PYTHONPATH="${INSTALL_DIR}/vendor" python3 -c "
+        cfg_password_hash="$(PYTHONPATH="${INSTALL_DIR}/vendor" "${INSTALL_DIR}/runtime/bin/python3" -c "
 from werkzeug.security import generate_password_hash
 import sys
 print(generate_password_hash(sys.stdin.readline().strip()))
@@ -541,7 +521,7 @@ print(generate_password_hash(sys.stdin.readline().strip()))
 
     # --- Generate secret key ---
     local secret_key
-    secret_key="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+    secret_key="$("${INSTALL_DIR}/runtime/bin/python3" -c 'import secrets; print(secrets.token_hex(32))')"
 
     # --- Write config ---
     log_info "Writing configuration..."
@@ -715,7 +695,7 @@ do_install() {
     echo -e "  Version:     ${CYAN}${VERSION}${NC}"
     echo -e "  Install dir: ${CYAN}${INSTALL_DIR}${NC}"
     echo -e "  Access URL:  ${CYAN}${protocol}://${ip_addr}:${summary_port}${NC}"
-    echo -e "  Prereqs:     ${CYAN}Python 3.10+ only (deps vendored)${NC}"
+    echo -e "  Prereqs:     ${CYAN}tmux (optional) — Python 3.12 bundled${NC}"
     echo ""
     echo -e "  Quick start:"
     echo -e "    ${YELLOW}cd ${INSTALL_DIR} && ./start.sh${NC}"
@@ -807,7 +787,7 @@ main() {
             echo "  ./install.sh --platform     Show detected OS platform and install hints"
             echo "  ./install.sh --help         Show this help"
             echo ""
-            echo "Self-contained: only requires Python 3.10+ (no pip, no venv, no internet)"
+            echo "Self-contained: bundled Python 3.12 runtime — no system Python required"
             ;;
         -y|--non-interactive)
             NONINTERACTIVE=1

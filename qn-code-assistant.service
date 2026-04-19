@@ -19,12 +19,13 @@ Type=simple
 User=pleb
 Group=pleb
 WorkingDirectory=/opt/claude-web
-ExecStart=/usr/bin/python3 /opt/claude-web/app.py
+ExecStart=/opt/claude-web/runtime/bin/python3 /opt/claude-web/app.py
 Restart=on-failure
 RestartSec=5
 KillMode=process
 Environment=PYTHONUNBUFFERED=1
 Environment=CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
+Environment=PATH=/opt/claude-web/runtime/bin:/usr/local/bin:/usr/bin:/bin
 
 # Security hardening
 NoNewPrivileges=true

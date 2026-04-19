@@ -101,6 +101,9 @@ echo -e "${YELLOW}Generating ${INSTALLER}...${NC}"
 # Get current version from app.py
 VERSION=$(grep -oP "VERSION\s*=\s*['\"]([^'\"]+)['\"]" "${SCRIPT_DIR}/app.py" | head -1 | grep -oP "['\"][^'\"]+['\"]" | tr -d "'\"" || echo "unknown")
 
+# Remove stale installer if present so we can rewrite without depending on its perms.
+rm -f "${INSTALLER}"
+
 # Generate the installer script
 cat > "${INSTALLER}" << 'INSTALLER_HEADER'
 #!/bin/bash
@@ -193,19 +196,19 @@ show_platform_info() {
     case "${DETECTED_PLATFORM}" in
         linux-debian)
             echo -e "  OS family: Debian / Ubuntu"
-            echo -e "  Python:    ${CYAN}sudo apt install python3${NC}"
+            echo -e "  Runtime:   Bundled Python 3.12 (musl) — no system Python required"
             echo -e "  tmux:      ${CYAN}sudo apt install tmux${NC}"
             echo -e "  Service:   systemd (install as root to register)"
             ;;
         linux-rhel)
             echo -e "  OS family: RHEL / CentOS / Fedora"
-            echo -e "  Python:    ${CYAN}sudo dnf install python3${NC}"
+            echo -e "  Runtime:   Bundled Python 3.12 (musl) — no system Python required"
             echo -e "  tmux:      ${CYAN}sudo dnf install tmux${NC}"
             echo -e "  Service:   systemd (install as root to register)"
             ;;
         linux-arch)
             echo -e "  OS family: Arch Linux"
-            echo -e "  Python:    ${CYAN}sudo pacman -S python${NC}"
+            echo -e "  Runtime:   Bundled Python 3.12 (musl) — no system Python required"
             echo -e "  tmux:      ${CYAN}sudo pacman -S tmux${NC}"
             echo -e "  Service:   systemd (install as root to register)"
             ;;
@@ -216,14 +219,14 @@ show_platform_info() {
             else
                 echo -e "  Homebrew:  ${YELLOW}not found — install from https://brew.sh${NC}"
             fi
-            echo -e "  Python:    ${CYAN}brew install python@3.12${NC}"
+            echo -e "  Runtime:   Bundled Python 3.12 (musl) — no system Python required"
             echo -e "  tmux:      ${CYAN}brew install tmux${NC}"
             echo -e "  Service:   systemd is ${RED}not available${NC} on macOS"
             echo -e "             Use launchd or start manually: ${CYAN}./start.sh${NC}"
             ;;
         wsl)
             echo -e "  OS family: Windows Subsystem for Linux"
-            echo -e "  Python:    ${CYAN}sudo apt install python3${NC}"
+            echo -e "  Runtime:   Bundled Python 3.12 (musl) — no system Python required"
             echo -e "  tmux:      ${CYAN}sudo apt install tmux${NC}"
             echo -e "  Service:   systemd availability depends on WSL version"
             echo -e "             WSL2 with systemd enabled: ${CYAN}sudo systemctl enable qn-code-assistant${NC}"
@@ -231,7 +234,7 @@ show_platform_info() {
             ;;
         *)
             echo -e "  OS family: Unknown Linux"
-            echo -e "  Python:    install python3.10+ via your package manager"
+            echo -e "  Runtime:   Bundled Python 3.12 (musl) — no system Python required"
             echo -e "  tmux:      install tmux via your package manager"
             echo -e "  Service:   check if systemd is available: ${CYAN}pidof systemd${NC}"
             ;;
@@ -430,6 +433,19 @@ verify_integrity() {
 # Prerequisite checks
 # -------------------------------------------------------------------
 
+verify_bundled_runtime() {
+    local runtime_py="${INSTALL_DIR}/runtime/bin/python3"
+    if [[ ! -x "${runtime_py}" ]]; then
+        log_error "Bundled runtime missing: ${runtime_py}"
+        log_error "runtime/ directory not found — did the self-extracting installer complete?"
+        log_error "Re-run the self-extracting .sh installer; do not run install.sh directly."
+        return 1
+    fi
+    local bundled_ver
+    bundled_ver="$("${runtime_py}" -V 2>&1 | awk '{print $2}')"
+    log_info "Python ${bundled_ver} (bundled)"
+}
+
 check_prerequisites() {
     log_step "Checking prerequisites..."
 
@@ -437,36 +453,9 @@ check_prerequisites() {
     detect_platform
     log_info "Platform: ${DETECTED_PLATFORM}"
 
-    local missing=0
-
-    # Python 3.10+
-    if command -v python3 &> /dev/null; then
-        local py_version
-        py_version="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
-        local py_major py_minor
-        py_major="$(echo "${py_version}" | cut -d. -f1)"
-        py_minor="$(echo "${py_version}" | cut -d. -f2)"
-        if [[ "${py_major}" -lt 3 ]] || { [[ "${py_major}" -eq 3 ]] && [[ "${py_minor}" -lt 10 ]]; }; then
-            log_error "Python 3.10+ required, found ${py_version}"
-            case "${DETECTED_PLATFORM}" in
-                macos)        log_warn "Install with: brew install python@3.12" ;;
-                linux-debian|wsl) log_warn "Install with: sudo apt install python3.12" ;;
-                linux-rhel)   log_warn "Install with: sudo dnf install python3.12" ;;
-                linux-arch)   log_warn "Install with: sudo pacman -S python" ;;
-            esac
-            missing=1
-        else
-            log_info "Python ${py_version} found"
-        fi
-    else
-        log_error "Python 3 is not installed"
-        case "${DETECTED_PLATFORM}" in
-            macos)        log_warn "Install with: brew install python@3.12" ;;
-            linux-debian|wsl) log_warn "Install with: sudo apt install python3" ;;
-            linux-rhel)   log_warn "Install with: sudo dnf install python3" ;;
-            linux-arch)   log_warn "Install with: sudo pacman -S python" ;;
-        esac
-        missing=1
+    # Bundled Python runtime (mandatory)
+    if ! verify_bundled_runtime; then
+        exit 1
     fi
 
     # tmux (optional — needed for persistent terminal sessions)
@@ -483,12 +472,6 @@ check_prerequisites() {
         esac
     fi
 
-    if [[ "${missing}" -eq 1 ]]; then
-        echo ""
-        log_error "Missing prerequisites. Please install them and try again."
-        exit 1
-    fi
-
     echo ""
 }
 
@@ -498,7 +481,7 @@ check_prerequisites() {
 
 write_default_config() {
     local secret_key
-    secret_key="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+    secret_key="$("${INSTALL_DIR}/runtime/bin/python3" -c 'import secrets; print(secrets.token_hex(32))')"
     cat > "${INSTALL_DIR}/config.json" << DEFCONFIG_EOF
 {
     "host": "0.0.0.0",
@@ -587,7 +570,7 @@ interactive_setup() {
         done
 
         # Hash password using vendored werkzeug
-        cfg_password_hash="$(PYTHONPATH="${INSTALL_DIR}/vendor" python3 -c "
+        cfg_password_hash="$(PYTHONPATH="${INSTALL_DIR}/vendor" "${INSTALL_DIR}/runtime/bin/python3" -c "
 from werkzeug.security import generate_password_hash
 import sys
 print(generate_password_hash(sys.stdin.readline().strip()))
@@ -659,7 +642,7 @@ print(generate_password_hash(sys.stdin.readline().strip()))
 
     # --- Generate secret key ---
     local secret_key
-    secret_key="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+    secret_key="$("${INSTALL_DIR}/runtime/bin/python3" -c 'import secrets; print(secrets.token_hex(32))')"
 
     # --- Write config ---
     log_info "Writing configuration..."
@@ -833,7 +816,7 @@ do_install() {
     echo -e "  Version:     ${CYAN}${VERSION}${NC}"
     echo -e "  Install dir: ${CYAN}${INSTALL_DIR}${NC}"
     echo -e "  Access URL:  ${CYAN}${protocol}://${ip_addr}:${summary_port}${NC}"
-    echo -e "  Prereqs:     ${CYAN}Python 3.10+ only (deps vendored)${NC}"
+    echo -e "  Prereqs:     ${CYAN}tmux (optional) — Python 3.12 bundled${NC}"
     echo ""
     echo -e "  Quick start:"
     echo -e "    ${YELLOW}cd ${INSTALL_DIR} && ./start.sh${NC}"
@@ -925,7 +908,7 @@ main() {
             echo "  ./install.sh --platform     Show detected OS platform and install hints"
             echo "  ./install.sh --help         Show this help"
             echo ""
-            echo "Self-contained: only requires Python 3.10+ (no pip, no venv, no internet)"
+            echo "Self-contained: bundled Python 3.12 runtime — no system Python required"
             ;;
         -y|--non-interactive)
             NONINTERACTIVE=1

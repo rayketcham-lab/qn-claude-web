@@ -17,16 +17,17 @@ echo "║         QN Code Assistant                         ║"
 echo "╚═══════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
-# Check for Python
-if ! command -v python3 &> /dev/null; then
-    echo -e "${RED}Error: Python 3 is required but not installed.${NC}"
+# Check for bundled Python runtime
+if [[ ! -x "./runtime/bin/python3" ]]; then
+    echo -e "${RED}Error: Bundled Python runtime not found at ./runtime/bin/python3${NC}"
+    echo -e "${YELLOW}Re-run the self-extracting installer to restore the runtime directory.${NC}"
     exit 1
 fi
 
 # Verify vendor directory exists
 if [ ! -d "vendor" ]; then
     echo -e "${RED}Error: vendor/ directory not found. Dependencies are missing.${NC}"
-    echo -e "${YELLOW}Run the installer or pip install --target=vendor/ flask flask-socketio${NC}"
+    echo -e "${YELLOW}Re-run the installer to restore vendored dependencies.${NC}"
     exit 1
 fi
 
@@ -49,4 +50,4 @@ echo -e "${GREEN}Access the web interface at: http://localhost:5001${NC}"
 echo -e "${GREEN}For LAN access: http://$(hostname -I | awk '{print $1}'):5001${NC}"
 echo ""
 
-python3 app.py
+./runtime/bin/python3 app.py
