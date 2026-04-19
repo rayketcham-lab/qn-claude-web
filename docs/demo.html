@@ -383,6 +383,7 @@ nav {
 
 /* ===== COMPARISON TABLE ===== */
 #comparison { padding: 6rem 0; }
+#comparison .container { max-width: 1380px; }
 .compare-wrapper {
   overflow-x: auto;
   border-radius: 16px;
@@ -392,18 +393,21 @@ nav {
 .compare-table {
   width: 100%; border-collapse: collapse;
   background: var(--bg-card);
-  font-size: 0.875rem;
+  font-size: 0.82rem;
+  table-layout: fixed;
 }
+.compare-table col.col-feat { width: 20%; }
+.compare-table col.col-rival { width: 13.33%; }
 .compare-table thead th {
-  padding: 1.2rem 1.5rem;
+  padding: 0.9rem 0.7rem;
   text-align: left;
   border-bottom: 1px solid var(--border);
   font-weight: 600;
   color: var(--text-sec);
-  font-size: 0.8rem;
-  text-transform: uppercase; letter-spacing: 0.08em;
+  font-size: 0.72rem;
+  text-transform: uppercase; letter-spacing: 0.06em;
   background: var(--bg-mid);
-  white-space: nowrap;
+  vertical-align: top;
 }
 .compare-table thead th:first-child { color: var(--text-dim); }
 .compare-table thead th.col-qn {
@@ -416,9 +420,11 @@ nav {
 .compare-table tbody tr:last-child { border-bottom: none; }
 .compare-table tbody tr:hover { background: rgba(255,255,255,0.02); }
 .compare-table td {
-  padding: 1rem 1.5rem;
+  padding: 0.75rem 0.7rem;
   color: var(--text-sec);
   vertical-align: middle;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 .compare-table td:first-child { color: var(--text-pri); font-weight: 500; }
 .compare-table td.col-qn {
@@ -426,10 +432,10 @@ nav {
   border-left: 1px solid rgba(0, 212, 255, 0.1);
   border-right: 1px solid rgba(0, 212, 255, 0.1);
 }
-.cell-yes { color: var(--green); font-weight: 600; display: flex; align-items: center; gap: 0.4rem; }
-.cell-no { color: var(--text-dim); display: flex; align-items: center; gap: 0.4rem; }
-.cell-partial { color: var(--orange); display: flex; align-items: center; gap: 0.4rem; }
-.cell-roadmap { color: var(--purple); font-weight: 600; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.cell-yes { color: var(--green); font-weight: 600; display: flex; align-items: flex-start; gap: 0.35rem; flex-wrap: wrap; line-height: 1.35; }
+.cell-no { color: var(--text-dim); display: flex; align-items: flex-start; gap: 0.35rem; flex-wrap: wrap; line-height: 1.35; }
+.cell-partial { color: var(--orange); display: flex; align-items: flex-start; gap: 0.35rem; flex-wrap: wrap; line-height: 1.35; }
+.cell-roadmap { color: var(--purple); font-weight: 600; display: flex; align-items: flex-start; gap: 0.4rem; flex-wrap: wrap; line-height: 1.35; }
 .cell-roadmap::before {
   content: 'ROADMAP';
   background: rgba(167, 139, 250, 0.15);
@@ -814,6 +820,15 @@ footer a:hover { opacity: 1; }
 
     <div class="compare-wrapper reveal">
       <table class="compare-table">
+        <colgroup>
+          <col class="col-feat">
+          <col class="col-rival">
+          <col class="col-rival">
+          <col class="col-rival">
+          <col class="col-rival">
+          <col class="col-rival">
+          <col class="col-rival">
+        </colgroup>
         <thead>
           <tr>
             <th>Feature</th>
