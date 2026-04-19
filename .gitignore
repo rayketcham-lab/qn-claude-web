@@ -1,11 +1,41 @@
-venv/
-__pycache__/
+venv
+__pycache__
 *.pyc
-sessions/
-backups/
-certs/
+
+# Runtime state
+sessions
+backups
+certs
 usage.json
 config.json
 auth.json
+audit.log
 *.log
+
+# Secrets / env (no trailing slash so patterns match files or directories)
+secrets
+.env
+.env.*
+
+# Local backups and coverage artifacts
+*.bak
+*.bak-*
+.coverage
+.pytest_cache
+.ruff_cache
+
+# Editor / IDE
+.idea
+.vscode
+
+# Node (if any tooling lands here)
+node_modules
+
+# Claude harness working state
+.claude/worktrees
+.claude/hooks
+.claude/settings.json.bak-*
+.claude/settings.local.json.bak-*
+
+# Release artifacts
 qn-code-assistant-v*.sh

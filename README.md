@@ -57,14 +57,14 @@ Key capabilities:
 ## Quick Start
 
 ```bash
-# 1. Download
-curl -O https://your-server/qn-code-assistant-v2.0.0.sh
+# 1. Download the latest self-extracting installer
+curl -LO https://github.com/rayketcham-lab/qn-claude-web/releases/latest/download/qn-code-assistant-installer.sh
 
 # 2. Install
-bash qn-code-assistant-v2.0.0.sh
+bash qn-code-assistant-installer.sh
 
 # 3. Access
-# Open http://your-server:5001 in your browser
+# Open http://<server-ip>:5001 in your browser
 ```
 
 Or clone and run directly:
@@ -136,8 +136,8 @@ The Python dependencies are vendored — no additional pip installs required.
 ### Self-Extracting Installer (Recommended)
 
 ```bash
-curl -O https://your-server/qn-code-assistant-v2.0.0.sh
-bash qn-code-assistant-v2.0.0.sh
+curl -LO https://github.com/rayketcham-lab/qn-claude-web/releases/latest/download/qn-code-assistant-installer.sh
+bash qn-code-assistant-installer.sh
 ```
 
 The installer verifies SHA-256 hashes for all files, extracts to `/opt/claude-web`, and runs interactive setup.

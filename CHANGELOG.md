@@ -2,6 +2,58 @@
 
 All notable changes to QN Claude Web (formerly QN Code Assistant).
 
+## [2.0.0] - 2026-03-30
+
+### Added
+- **API versioning** — all routes moved under `/api/v1/`, with backwards-compat redirects from the legacy paths so existing clients keep working through the transition (commit `8974ead`)
+- **Docker deployment** — `Dockerfile`, `docker-compose.yml`, and a `docker-build` CI job; images run the vendored app with no pip install at runtime (commit `bb4ddcb`)
+- **Cross-platform installer** — install flow updated to work on Linux and Windows (WSL) hosts (commit `bb4ddcb`)
+- **Audit log** — `audit.log` captures auth, admin, and session-lifecycle events (commit `b67188b`)
+- **Account lockout** — escalating lockout on repeated failed logins, layered on top of the 10/5min IP rate limit (commit `b67188b`)
+- **Frontend CSRF integration** — every state-changing fetch now sends the CSRF token (commit `b67188b`)
+- **Usage analytics + credential separation** — per-user token usage tracking; credentials isolated from shared server env (commit `3eb5815`)
+- **Engine adapters** — pluggable layer lets the UI drive alternate backends (Claude, aider) through a single interface (commit `3eb5815`)
+- **Dependency audit** — build pipeline checks vendored packages against known CVEs (commit `3eb5815`)
+- **Team mode + tunnel** — multi-user team collaboration mode and built-in tunnel for remote access (commit `e0b7ecb`)
+- **Inline styles + mobile UI** — responsive layout, touch-friendly controls, PWA polish (commit `e0b7ecb`)
+- **Windows support** — path handling and PTY shims for native Windows hosts (commit `e0b7ecb`)
+
+### Changed
+- **Version bump 1.7.0 → 2.0.0** — breaking API surface move to `/api/v1/` justified the major bump
+
+### Tests
+- Route/integration/usage/engine coverage grew alongside the API versioning and engine-adapter work
+
+## [1.7.0] - 2026-03-30
+
+### Added
+- **User onboarding wizard** — first-run flow walks new users through credential setup (commit `8ac1596`)
+- **Per-user credential isolation** — each account has its own encrypted API key store; multi-host dashboard API exposes it safely (commit `9b29f07`)
+- **Public README, CONTRIBUTING guide, issue/PR templates** — repo made public-facing (commit `6afd63d`)
+
+### Security
+- **CSP `unsafe-inline` removed from `script-src`** — all inline scripts hoisted to static files (commit `4fa0120`)
+- **API key encryption at rest** — stored keys encrypted via `itsdangerous` with the Flask secret (commit `5b43442`)
+- **CSRF + WebSocket per-message auth** — CSRF tokens on HTTP state-changers; SocketIO messages carry a per-connection auth token (commit `1dbed69`)
+
+## [1.6.1] - 2026-03-28
+
+### Added
+- **Demo page** — asciinema cast + comparison table at `https://rayketcham-lab.github.io/qn-claude-web/demo.html` (commit `1a6aef7`)
+- **Flask test client infrastructure** — 26 new route-level tests using the Flask test client pattern (commit `5f4faa6`)
+
+### Security (P0 hardening)
+- **Secret key from env** — `QN_SECRET_KEY` now required in production; auto-generated fallback for dev only (commit `eb62c12`)
+- **Session timeout** — sessions expire after configurable idle window (commit `eb62c12`)
+- **Admin gates** — security-sensitive config keys locked to admin role (commit `eb62c12`)
+- **CSP tightening** — initial CSP baseline (follow-up hardening landed in 1.7.0) (commit `eb62c12`)
+- **Service user** — systemd unit runs as dedicated unprivileged user (commit `eb62c12`)
+
+### CI/CD
+- **ruff linting** — added to pipeline (commit `65353aa`)
+- **bandit SAST** — added to pipeline, skip list `B103,B104` (commit `65353aa`)
+- **Coverage reporting** — initial coverage gate added (later tuned to 45% for the single-file app) (commit `65353aa`)
+
 ## [1.6.0] - 2026-03-28
 
 ### Security (7 fixes)
