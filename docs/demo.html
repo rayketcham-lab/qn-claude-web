@@ -429,6 +429,30 @@ nav {
 .cell-yes { color: var(--green); font-weight: 600; display: flex; align-items: center; gap: 0.4rem; }
 .cell-no { color: var(--text-dim); display: flex; align-items: center; gap: 0.4rem; }
 .cell-partial { color: var(--orange); display: flex; align-items: center; gap: 0.4rem; }
+.cell-roadmap { color: var(--purple); font-weight: 600; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.cell-roadmap::before {
+  content: 'ROADMAP';
+  background: rgba(167, 139, 250, 0.15);
+  color: var(--purple);
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  border: 1px solid rgba(167, 139, 250, 0.3);
+}
+.compare-table tr.band-header td {
+  background: var(--bg-mid);
+  color: var(--cyan);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 0.7rem 1.5rem;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.compare-table tr.band-header:hover { background: var(--bg-mid); }
 .check { font-size: 0.85rem; }
 
 /* ===== AGENTS SECTION ===== */
@@ -785,7 +809,7 @@ footer a:hover { opacity: 1; }
     <div class="section-header reveal">
       <div class="section-badge">Comparison</div>
       <h2 class="section-title">How it stacks up</h2>
-      <p class="section-desc">Feature comparison with other Claude Code web interfaces</p>
+      <p class="section-desc">Head-to-head against five Claude Code interfaces. Facts verified from each project&rsquo;s own README &mdash; where a rival genuinely beats us, we mark the QN cell <strong style="color:var(--purple)">Roadmap</strong> and publish the gap.</p>
     </div>
 
     <div class="compare-wrapper reveal">
@@ -793,75 +817,258 @@ footer a:hover { opacity: 1; }
         <thead>
           <tr>
             <th>Feature</th>
-            <th class="col-qn">QN Code Assistant</th>
-            <th>CloudCLI &nbsp;<span style="font-weight:400;opacity:.5">(9K stars)</span></th>
-            <th>claude.ai/code</th>
+            <th class="col-qn">QN Claude Web</th>
+            <th>Claudia<br><span style="font-weight:400;opacity:.5;font-size:.7rem">(opcode, desktop, 21K&#9733;)</span></th>
+            <th>CloudCLI<br><span style="font-weight:400;opacity:.5;font-size:.7rem">(web, 10K&#9733;)</span></th>
+            <th>CC WebUI<br><span style="font-weight:400;opacity:.5;font-size:.7rem">(web, 1K&#9733;)</span></th>
+            <th>Happy<br><span style="font-weight:400;opacity:.5;font-size:.7rem">(mobile+web, 18K&#9733;)</span></th>
+            <th>claude.ai/code<br><span style="font-weight:400;opacity:.5;font-size:.7rem">(Anthropic SaaS)</span></th>
           </tr>
         </thead>
         <tbody>
+
+          <tr class="band-header"><td colspan="7">Terminal &amp; Session</td></tr>
           <tr>
-            <td>Real Terminal (PTY + tmux)</td>
-            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> Yes</span></td>
-            <td><span class="cell-no">&#215; Plugin only</span></td>
-            <td><span class="cell-no">&#215; Sandboxed VM</span></td>
+            <td>Real PTY Terminal (not exec wrapper)</td>
+            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> pty.fork + select</span></td>
+            <td><span class="cell-no">&#215; Chat UI only</span></td>
+            <td><span class="cell-partial">&#8764; Shell tab (docker)</span></td>
+            <td><span class="cell-no">&#215; Chat streaming</span></td>
+            <td><span class="cell-no">&#215; Chat only</span></td>
+            <td><span class="cell-no">&#215; Sandbox VM</span></td>
           </tr>
           <tr>
-            <td>SSH Remote Servers</td>
-            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> Yes — wizard + auto key exchange</span></td>
+            <td>tmux Persistence (survives browser close)</td>
+            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> Yes &mdash; named sessions</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+          </tr>
+          <tr>
+            <td>Multi-Terminal Tabs</td>
+            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> Yes</span></td>
+            <td><span class="cell-partial">&#8764; Session tabs</span></td>
+            <td><span class="cell-yes"><span class="check">&#10003;</span> Yes</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+          </tr>
+          <tr>
+            <td>Checkpoint + Rewind Timeline</td>
+            <td class="col-qn"><span class="cell-roadmap">Planned for v2.2</span></td>
+            <td><span class="cell-yes"><span class="check">&#10003;</span> Visual timeline</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-partial">&#8764; Limited history</span></td>
+          </tr>
+          <tr>
+            <td>Session Fork / Branch</td>
+            <td class="col-qn"><span class="cell-roadmap">Planned for v2.2</span></td>
+            <td><span class="cell-yes"><span class="check">&#10003;</span> Fork from checkpoint</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+          </tr>
+
+          <tr class="band-header"><td colspan="7">Remote &amp; Infrastructure</td></tr>
+          <tr>
+            <td>SSH Remote Hosts (wizard + auto key exchange)</td>
+            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> 5-step wizard</span></td>
+            <td><span class="cell-no">&#215; Local only</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
             <td><span class="cell-no">&#215; None</span></td>
             <td><span class="cell-no">&#215; GitHub only</span></td>
           </tr>
           <tr>
+            <td>Built-in Cloudflare Tunnel</td>
+            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> Start/stop from UI</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-partial">&#8764; E2E relay (theirs)</span></td>
+            <td><span class="cell-no">&#215; N/A</span></td>
+          </tr>
+          <tr>
+            <td>Multi-Host Health Dashboard</td>
+            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> Groups + batch ping</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+          </tr>
+          <tr>
+            <td><code>~/.ssh/config</code> Import</td>
+            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> Auto-detected</span></td>
+            <td><span class="cell-no">&#215; N/A</span></td>
+            <td><span class="cell-no">&#215; N/A</span></td>
+            <td><span class="cell-no">&#215; N/A</span></td>
+            <td><span class="cell-no">&#215; N/A</span></td>
+            <td><span class="cell-no">&#215; N/A</span></td>
+          </tr>
+
+          <tr class="band-header"><td colspan="7">Auth &amp; Security</td></tr>
+          <tr>
             <td>Multi-User Auth + RBAC</td>
-            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> Yes — bcrypt, admin/user</span></td>
+            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> bcrypt, admin/user</span></td>
+            <td><span class="cell-no">&#215; Single-user</span></td>
+            <td><span class="cell-partial">&#8764; Cloud team tier only</span></td>
             <td><span class="cell-no">&#215; None</span></td>
-            <td><span class="cell-partial">&#8764; Enterprise tier</span></td>
+            <td><span class="cell-no">&#215; Per-device</span></td>
+            <td><span class="cell-partial">&#8764; Enterprise only</span></td>
           </tr>
           <tr>
-            <td>AI Agent Teams (20+)</td>
-            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> Yes — orchestrated</span></td>
+            <td>Per-User API Keys + Quotas</td>
+            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> Isolated storage</span></td>
+            <td><span class="cell-no">&#215; Shared config</span></td>
             <td><span class="cell-no">&#215; None</span></td>
             <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-partial">&#8764; Org-level only</span></td>
           </tr>
           <tr>
-            <td>Autonomous Mode</td>
-            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> Yes — tmux auto-restart</span></td>
-            <td><span class="cell-no">&#215; None</span></td>
-            <td><span class="cell-partial">&#8764; Cloud only</span></td>
+            <td>CSRF + Rate Limits + IP Lockout</td>
+            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> All three</span></td>
+            <td><span class="cell-no">&#215; Local trust</span></td>
+            <td><span class="cell-no">&#215; Not documented</span></td>
+            <td><span class="cell-no">&#215; Local trust</span></td>
+            <td><span class="cell-no">&#215; Not documented</span></td>
+            <td><span class="cell-yes"><span class="check">&#10003;</span> Managed</span></td>
           </tr>
           <tr>
-            <td>Self-Hosted</td>
-            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> Yes</span></td>
+            <td>2FA / TOTP</td>
+            <td class="col-qn"><span class="cell-roadmap">Future enhancement</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
             <td><span class="cell-yes"><span class="check">&#10003;</span> Yes</span></td>
+          </tr>
+          <tr>
+            <td>SSO / OIDC</td>
+            <td class="col-qn"><span class="cell-roadmap">Future enhancement</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-partial">&#8764; Cloud tier</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-partial">&#8764; Enterprise only</span></td>
+          </tr>
+          <tr>
+            <td>Automated Security Test Suite</td>
+            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> 685 tests + Kali scans</span></td>
+            <td><span class="cell-no">&#215; Not published</span></td>
+            <td><span class="cell-no">&#215; Not published</span></td>
+            <td><span class="cell-no">&#215; Not published</span></td>
+            <td><span class="cell-partial">&#8764; E2E-encrypted design</span></td>
+            <td><span class="cell-partial">&#8764; Closed-source</span></td>
+          </tr>
+
+          <tr class="band-header"><td colspan="7">AI, Agents &amp; UX</td></tr>
+          <tr>
+            <td>Specialized Agent Library</td>
+            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> 21 agents + Sentinel</span></td>
+            <td><span class="cell-yes"><span class="check">&#10003;</span> Custom agents</span></td>
+            <td><span class="cell-partial">&#8764; Multi-model, one agent</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-no">&#215; Model variants only</span></td>
+          </tr>
+          <tr>
+            <td>MCP Server Management UI</td>
+            <td class="col-qn"><span class="cell-roadmap">Planned for v2.3</span></td>
+            <td><span class="cell-yes"><span class="check">&#10003;</span> Central registry</span></td>
+            <td><span class="cell-yes"><span class="check">&#10003;</span> UI + sync</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-partial">&#8764; Connectors only</span></td>
+          </tr>
+          <tr>
+            <td>Git Status + Diff Viewer</td>
+            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> Per-project API</span></td>
+            <td><span class="cell-yes"><span class="check">&#10003;</span> Checkpoint diff</span></td>
+            <td><span class="cell-yes"><span class="check">&#10003;</span> Stage + commit</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-partial">&#8764; GitHub-only</span></td>
+          </tr>
+          <tr>
+            <td>In-Browser Code Editor</td>
+            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> Ace editor</span></td>
+            <td><span class="cell-yes"><span class="check">&#10003;</span> Tauri native</span></td>
+            <td><span class="cell-yes"><span class="check">&#10003;</span> File tree + edit</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-no">&#215; None</span></td>
+            <td><span class="cell-yes"><span class="check">&#10003;</span> Yes</span></td>
+          </tr>
+          <tr>
+            <td>Dark + Light Theme</td>
+            <td class="col-qn"><span class="cell-roadmap">Dark-only today</span></td>
+            <td><span class="cell-yes"><span class="check">&#10003;</span> Both</span></td>
+            <td><span class="cell-yes"><span class="check">&#10003;</span> Both</span></td>
+            <td><span class="cell-yes"><span class="check">&#10003;</span> Both + auto</span></td>
+            <td><span class="cell-yes"><span class="check">&#10003;</span> Both</span></td>
+            <td><span class="cell-yes"><span class="check">&#10003;</span> Both</span></td>
+          </tr>
+
+          <tr class="band-header"><td colspan="7">Platform &amp; Deployment</td></tr>
+          <tr>
+            <td>Self-Hosted (on your metal)</td>
+            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> Single binary</span></td>
+            <td><span class="cell-yes"><span class="check">&#10003;</span> Desktop only</span></td>
+            <td><span class="cell-yes"><span class="check">&#10003;</span> OSS tier</span></td>
+            <td><span class="cell-yes"><span class="check">&#10003;</span> Yes</span></td>
+            <td><span class="cell-partial">&#8764; Needs relay</span></td>
             <td><span class="cell-no">&#215; SaaS only</span></td>
           </tr>
           <tr>
-            <td>Zero Build Step</td>
-            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> Yes — pure Python</span></td>
-            <td><span class="cell-no">&#215; React + Vite</span></td>
-            <td><span class="cell-no">&#215; Cloud</span></td>
+            <td>Bundled Runtime (no host Python/Node)</td>
+            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> PBS musl 3.12</span></td>
+            <td><span class="cell-partial">&#8764; Tauri bundle</span></td>
+            <td><span class="cell-no">&#215; System Node + Python</span></td>
+            <td><span class="cell-no">&#215; Deno runtime</span></td>
+            <td><span class="cell-no">&#215; Node + Expo</span></td>
+            <td><span class="cell-no">&#215; N/A (cloud)</span></td>
           </tr>
           <tr>
-            <td>PWA + Mobile</td>
-            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> Yes — installable</span></td>
+            <td>x86_64 + aarch64 Native Installers</td>
+            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> Both arches</span></td>
+            <td><span class="cell-yes"><span class="check">&#10003;</span> Both arches</span></td>
+            <td><span class="cell-partial">&#8764; Via Node</span></td>
+            <td><span class="cell-partial">&#8764; Via Deno</span></td>
+            <td><span class="cell-partial">&#8764; Via Node</span></td>
+            <td><span class="cell-no">&#215; N/A</span></td>
+          </tr>
+          <tr>
+            <td>Installable PWA (mobile + desktop)</td>
+            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> Service worker</span></td>
+            <td><span class="cell-no">&#215; Desktop-only</span></td>
+            <td><span class="cell-yes"><span class="check">&#10003;</span> Responsive</span></td>
             <td><span class="cell-partial">&#8764; Responsive only</span></td>
-            <td><span class="cell-yes"><span class="check">&#10003;</span> Yes</span></td>
+            <td><span class="cell-yes"><span class="check">&#10003;</span> Native apps</span></td>
+            <td><span class="cell-yes"><span class="check">&#10003;</span> Native apps</span></td>
           </tr>
           <tr>
-            <td>Bundled Python Runtime</td>
-            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> Yes — PBS musl 3.12</span></td>
-            <td><span class="cell-no">&#215; System Python</span></td>
-            <td><span class="cell-no">&#215; Cloud</span></td>
+            <td>License</td>
+            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> Apache-2.0</span></td>
+            <td><span class="cell-partial">&#8764; AGPL-3.0</span></td>
+            <td><span class="cell-partial">&#8764; AGPL-3.0</span></td>
+            <td><span class="cell-yes"><span class="check">&#10003;</span> MIT</span></td>
+            <td><span class="cell-yes"><span class="check">&#10003;</span> MIT</span></td>
+            <td><span class="cell-no">&#215; Proprietary</span></td>
           </tr>
-          <tr>
-            <td>Security Test Suite</td>
-            <td class="col-qn"><span class="cell-yes"><span class="check">&#10003;</span> 685 tests</span></td>
-            <td><span class="cell-no">&#215; None</span></td>
-            <td><span class="cell-no">&#215; Closed source</span></td>
-          </tr>
+
         </tbody>
       </table>
     </div>
+
+    <p class="reveal" style="margin-top:1.5rem;font-size:.85rem;color:var(--text-dim);text-align:center;max-width:720px;margin-left:auto;margin-right:auto;">
+      <strong style="color:var(--purple)">Roadmap</strong> cells mean we don&rsquo;t ship it today &mdash; see the <a href="https://github.com/rayketcham-lab/qn-claude-web/issues?q=is%3Aissue+label%3Aroadmap" style="color:var(--cyan)">roadmap issues</a> for status and planned version. If a rival offers something you need now, that&rsquo;s a fair reason to pick them &mdash; we&rsquo;d rather be honest than win with asterisks.
+    </p>
   </div>
 </section>
 
