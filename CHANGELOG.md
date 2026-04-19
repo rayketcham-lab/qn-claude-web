@@ -6,7 +6,6 @@ All notable changes to QN Claude Web (formerly QN Code Assistant).
 
 ### Added
 - **API versioning** — all routes moved under `/api/v1/`, with backwards-compat redirects from the legacy paths so existing clients keep working through the transition (commit `8974ead`)
-- **Docker deployment** — `Dockerfile`, `docker-compose.yml`, and a `docker-build` CI job; images run the vendored app with no pip install at runtime (commit `bb4ddcb`)
 - **Cross-platform installer** — install flow updated to work on Linux and Windows (WSL) hosts (commit `bb4ddcb`)
 - **Audit log** — `audit.log` captures auth, admin, and session-lifecycle events (commit `b67188b`)
 - **Account lockout** — escalating lockout on repeated failed logins, layered on top of the 10/5min IP rate limit (commit `b67188b`)
@@ -384,6 +383,5 @@ All notable changes to QN Claude Web (formerly QN Code Assistant).
 - [ ] Multi-CLI support (Aider, Codex, Gemini)
 - [ ] Approval workflow controls
 - [ ] Audit logging
-- [ ] Docker sandboxing
 - [ ] Collaborative multi-user sessions
 - [ ] Plugin system

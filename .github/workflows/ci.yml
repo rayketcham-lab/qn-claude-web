@@ -197,11 +197,6 @@ jobs:
           print('ReadWritePaths coverage OK')
           "
 
-      - name: Verify docker-compose mounts auth.json
-        run: |
-          grep -q 'auth.json' docker-compose.yml || (echo "::error::docker-compose.yml missing auth.json volume mount"; exit 1)
-          echo "auth.json mount present"
-
       - name: Validate deny list coverage
         run: |
           python3 -c "
@@ -242,47 +237,3 @@ jobs:
             exit 1
           fi
 
-  # ---------------------------------------------------------------------------
-  # Job 6: Docker Build + Smoke Test
-  # Builds the Docker image from the Dockerfile, starts a container on a
-  # non-conflicting port, waits for the app to become healthy, then tears
-  # everything down.  continue-on-error: true because the self-hosted runner
-  # may not have Docker installed — flip to false once confirmed working.
-  # ---------------------------------------------------------------------------
-  docker-build:
-    runs-on: [self-hosted, qnca]
-    needs: unit-tests
-    continue-on-error: true
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-
-      - name: Build Docker image
-        run: docker build -t qn-claude-web:ci-test /opt/claude-web
-
-      - name: Start container
-        run: docker run -d --name qn-ci-test -p 15001:5001 qn-claude-web:ci-test
-
-      - name: Wait for container healthy
-        run: |
-          for i in $(seq 1 20); do
-            STATUS=$(docker inspect --format='{{.State.Health.Status}}' qn-ci-test 2>/dev/null || echo "missing")
-            echo "Attempt ${i}: ${STATUS}"
-            if [ "${STATUS}" = "healthy" ]; then break; fi
-            if [ "${i}" -eq 20 ]; then
-              docker logs qn-ci-test
-              echo "::error::Container never became healthy"
-              exit 1
-            fi
-            sleep 2
-          done
-
-      - name: Health check
-        run: curl -f http://localhost:15001/api/health
-
-      - name: Tear down container
-        if: always()
-        run: |
-          docker stop qn-ci-test || true
-          docker rm qn-ci-test || true
