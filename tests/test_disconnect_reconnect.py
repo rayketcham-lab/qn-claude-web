@@ -167,7 +167,7 @@ def _make_fake_terminal(ws_sid, tmux_session='qn-fake0001', project='/tmp', pid=
             'log_file': '/dev/null',
             'created_at': time.time(),
         }
-    _log('SETUP', f'injected fake terminal', tid=tid, ws_sid=ws_sid, tmux=tmux_session)
+    _log('SETUP', 'injected fake terminal', tid=tid, ws_sid=ws_sid, tmux=tmux_session)
     return tid
 
 
