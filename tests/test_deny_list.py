@@ -16,8 +16,20 @@ import sys
 import unittest
 
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_SETTINGS_PATH = os.path.join(_project_root, '.claude', 'settings.json')
-_HOOKS_DIR = os.path.join(_project_root, '.claude', 'hooks')
+
+
+def _source_root():
+    """Prefer the fresh CI checkout over the on-disk runner tree for
+    source-of-truth config assertions (the runner tree can drift)."""
+    ws = os.environ.get('GITHUB_WORKSPACE')
+    if ws and os.path.isfile(os.path.join(ws, '.claude', 'settings.json')):
+        return ws
+    return _project_root
+
+
+_source = _source_root()
+_SETTINGS_PATH = os.path.join(_source, '.claude', 'settings.json')
+_HOOKS_DIR = os.path.join(_source, '.claude', 'hooks')
 _PRE_TOOL_USE_HOOK = os.path.join(_HOOKS_DIR, 'preToolUse.sh')
 
 

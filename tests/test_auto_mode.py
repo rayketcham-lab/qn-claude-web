@@ -28,7 +28,20 @@ if _project_root not in sys.path:
 import app as app_module
 
 build_claude_command = app_module.build_claude_command
-_SETTINGS_PATH = os.path.join(_project_root, '.claude', 'settings.json')
+
+
+def _source_root():
+    """Prefer the fresh CI checkout over the on-disk runner tree for
+    source-of-truth config assertions. The self-hosted runner shares its
+    working directory with the live service, whose state can drift from
+    what's committed on main — scope source-level tests to the checkout."""
+    ws = os.environ.get('GITHUB_WORKSPACE')
+    if ws and os.path.isfile(os.path.join(ws, '.claude', 'settings.json')):
+        return ws
+    return _project_root
+
+
+_SETTINGS_PATH = os.path.join(_source_root(), '.claude', 'settings.json')
 
 
 def _load_settings():

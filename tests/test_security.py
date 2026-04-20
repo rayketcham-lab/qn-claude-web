@@ -1085,25 +1085,31 @@ class TestSystemdHardening(unittest.TestCase):
 
 
 class TestInstallerPythonVersion(unittest.TestCase):
-    """Verify installer checks for the correct Python version."""
+    """Verify installer uses the bundled musl Python runtime.
 
-    def test_installer_requires_310(self):
-        """build-installer.sh must require Python 3.10+, not 3.8."""
+    The installer shipped with v1.5.x dropped the system-Python dependency and
+    bundles python-build-standalone 3.12 (musl) instead. These tests assert
+    that invariant rather than the old 'check system py >= 3.10' behavior."""
+
+    def test_installer_uses_bundled_runtime(self):
+        """build-installer.sh must invoke the bundled runtime, not system python."""
         installer_path = os.path.join(_project_root, 'build-installer.sh')
         with open(installer_path) as f:
             source = f.read()
-        # Check the Python version context specifically (py_minor -lt N)
-        self.assertNotIn('py_minor}" -lt 8', source, "Installer still checks for 3.8")
-        self.assertIn('lt 10', source, "Installer should check for 3.10+")
+        self.assertIn('runtime/bin/python3', source,
+                      "Installer should reference the bundled runtime path")
+        self.assertNotIn('py_minor}" -lt 8', source,
+                         "Installer must not gate on system Python 3.8")
 
-    def test_release_requires_310(self):
-        """build-release.sh must require Python 3.10+, not 3.8."""
+    def test_release_bundles_pbs_runtime(self):
+        """build-release.sh must download python-build-standalone assets."""
         release_path = os.path.join(_project_root, 'build-release.sh')
         with open(release_path) as f:
             source = f.read()
-        # Check the Python version context specifically (py_minor -lt N)
-        self.assertNotIn('py_minor}" -lt 8', source, "Release script still checks for 3.8")
-        self.assertIn('lt 10', source, "Release script should check for 3.10+")
+        self.assertIn('python-build-standalone', source,
+                      "Release script should download PBS runtime tarballs")
+        self.assertIn('runtime/bin/python3', source,
+                      "Release script should install bundled runtime into runtime/")
 
 
 class TestPasswordPolicy(unittest.TestCase):

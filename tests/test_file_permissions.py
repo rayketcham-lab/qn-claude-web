@@ -24,6 +24,16 @@ import unittest
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+def _scan_root():
+    """For source-content scans, prefer the fresh CI checkout over the
+    on-disk runner tree — the runner's tree accumulates runtime state
+    (logs, session data, sandbox scratch dirs) that isn't source code."""
+    ws = os.environ.get('GITHUB_WORKSPACE')
+    if ws and os.path.isdir(ws):
+        return ws
+    return _project_root
+
+
 class TestGroupMembership(unittest.TestCase):
     """claude user must be in the pleb group for development access."""
 
@@ -61,6 +71,7 @@ class TestSourceFilePermissions(unittest.TestCase):
         full = os.path.join(_project_root, relpath)
         if not os.path.exists(full):
             self.skipTest(f'{relpath} does not exist')
+            return None
         return stat.S_IMODE(os.stat(full).st_mode)
 
     def test_source_files_not_world_writable(self):
@@ -107,6 +118,7 @@ class TestSensitiveFilePermissions(unittest.TestCase):
         full = os.path.join(_project_root, relpath)
         if not os.path.exists(full):
             self.skipTest(f'{relpath} does not exist')
+            return None
         return stat.S_IMODE(os.stat(full).st_mode)
 
     def test_sensitive_files_no_world_access(self):
@@ -158,11 +170,12 @@ class TestNoWorldWritableSourceFiles(unittest.TestCase):
 
     def test_no_world_writable_source_files(self):
         """Scan for world-writable files outside venv/."""
+        scan_root = _scan_root()
         violations = []
-        for root, dirs, files in os.walk(_project_root):
+        for root, dirs, files in os.walk(scan_root):
             # Skip venv, __pycache__, .git
             dirs[:] = [d for d in dirs if d not in ('venv', '__pycache__', '.git', 'node_modules')]
-            rel_root = os.path.relpath(root, _project_root)
+            rel_root = os.path.relpath(root, scan_root)
             for f in files:
                 full = os.path.join(root, f)
                 if os.path.islink(full):
