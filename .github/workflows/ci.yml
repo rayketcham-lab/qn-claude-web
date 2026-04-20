@@ -49,12 +49,14 @@ jobs:
 
       # Copy test files from the fresh checkout to the on-disk project so
       # tests can import vendored dependencies that live on the runner.
-      # --no-owner/--no-group/--no-perms: the runner user (pleb) shares the
-      # claude group but cannot chgrp to claude — let existing dir perms
-      # (setgid, g+w) handle ownership instead of rsync preserving it.
+      # The runner user (pleb) shares the claude group with the on-disk
+      # tree but isn't the owner, so rsync can't preserve owner/group/perms
+      # or set mtimes. Drop all of those and rely on the existing setgid +
+      # g+w dir bits to keep new files group-writable.
       - name: Sync test files to working directory
         run: |
-          rsync -rltD --delete --no-owner --no-group --no-perms \
+          rsync -rlD --delete \
+            --no-owner --no-group --no-perms --no-times \
             "${GITHUB_WORKSPACE}/tests/" /opt/claude-web/tests/
 
       - name: Install coverage
