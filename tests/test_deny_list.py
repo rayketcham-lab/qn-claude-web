@@ -27,9 +27,11 @@ def _source_root():
     return _project_root
 
 
-_source = _source_root()
-_SETTINGS_PATH = os.path.join(_source, '.claude', 'settings.json')
-_HOOKS_DIR = os.path.join(_source, '.claude', 'hooks')
+_SETTINGS_PATH = os.path.join(_source_root(), '.claude', 'settings.json')
+# Hooks are a runtime (deployment) concern rather than a source-of-truth file
+# — `.claude/hooks/` is gitignored and only exists on the deployed runner tree.
+# Keep hook-presence checks scoped to _project_root.
+_HOOKS_DIR = os.path.join(_project_root, '.claude', 'hooks')
 _PRE_TOOL_USE_HOOK = os.path.join(_HOOKS_DIR, 'preToolUse.sh')
 
 
