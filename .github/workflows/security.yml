@@ -20,6 +20,9 @@ on:
     # Weekly scan: Sunday at 02:00 UTC
     - cron: "0 2 * * 0"
 
+permissions:
+  contents: read
+
 defaults:
   run:
     working-directory: /opt/claude-web
